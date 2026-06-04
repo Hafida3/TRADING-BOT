@@ -1,7 +1,6 @@
 # SOL / USDC Autonomous Trading Bot
 
-Modular Solana trading bot with 7 signal sources, grid bot, Jupiter DEX execution,
-Telegram alerts, SQLite persistence, and a local HTML dashboard.
+An autonomous AI trading agent that makes independent decisions based on 7 signal sources including geopolitical events (Truth Social RSS), market sentiment (Fear & Greed, NewsAPI), prediction markets (Polymarket), and technical analysis. Built as a learning project to understand how AI agents behave when they must monitor, reconcile and act on multiple heterogeneous data sources simultaneously.
 
 ---
 
@@ -87,6 +86,12 @@ On restart the bot loads the last 100 trades from the DB so `realized_pnl` and t
 dashboard's Recent Trades panel are correct immediately — no warm-up period.
 
 Stats endpoint: **http://localhost:8080/stats**
+
+---
+
+## Built with
+
+Developed with the assistance of Claude AI (Anthropic) as a coding and architecture partner.
 
 ---
 

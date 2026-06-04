@@ -1,6 +1,6 @@
 # SOL / USDC Autonomous Trading Bot
 
-An autonomous AI trading agent that makes independent decisions based on 7 signal sources including geopolitical events (Truth Social RSS), market sentiment (Fear & Greed, NewsAPI), prediction markets (Polymarket), and technical analysis. Built as a learning project to understand how AI agents behave when they must monitor, reconcile and act on multiple heterogeneous data sources simultaneously.
+An autonomous AI trading agent that makes independent decisions based on 7 signal sources including geopolitical events (Truth Social RSS), market sentiment (Fear & Greed, NewsAPI), prediction markets (Polymarket), and technical analysis. Built as a learning project to explore how autonomous agents make decisions under uncertainty when multiple heterogeneous data sources provide incomplete, delayed, or conflicting signals.
 
 ---
 

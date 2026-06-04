@@ -1,23 +1,92 @@
 # SOL / USDC Autonomous Trading Bot
 
-Modular Solana trading bot with RSI/MACD analysis, Polymarket prediction
-signals, Jupiter DEX execution, Telegram alerts and a local HTML dashboard.
+Modular Solana trading bot with 7 signal sources, grid bot, Jupiter DEX execution,
+Telegram alerts, SQLite persistence, and a local HTML dashboard.
 
 ---
 
 ## Architecture — 5 Layers
 
 ```
-Layer 1  data/       price_feed.py    CoinGecko SOL/USDC prices
-                     polymarket.py    Free Polymarket sentiment signal
-Layer 2  analysis/   indicators.py    RSI (Wilder) + MACD
-Layer 3  decision/   signal_engine.py Weighted signal → BUY/SELL/HOLD
-Layer 4  risk/       risk_manager.py  Position sizing, SL/TP, drawdown guard
-Layer 5  execution/  wallet.py        Encrypted Solana hot wallet
-                     jupiter.py       Jupiter v6 SOL⟷USDC swaps
+Layer 1  data/       price_feed.py     CoinGecko SOL/USDC prices + OHLCV bootstrap
+                     polymarket.py     Polymarket Gamma API (Fed cuts + BTC $150k)
+                     news_sentiment.py NewsAPI + VADER local NLP (7 crypto topics)
+                     macro.py          BTC 24h % change + BTC dominance
+                     trump_signal.py   Truth Social RSS + geopolitical keyword scoring
+                     fear_greed.py     Crypto Fear & Greed Index (contrarian)
+                     database.py       SQLite persistence (trades, signals, grid)
+
+Layer 2  analysis/   indicators.py     RSI (Wilder EWM) + MACD
+                     regime.py         Trending / choppy / ranging detection (ADX/ATR)
+
+Layer 3  decision/   signal_engine.py  Weighted composite signal → BUY / SELL / HOLD
+
+Layer 4  risk/       risk_manager.py   Position sizing, SL/TP, drawdown guard,
+                                       reversal cooldown, long + short slots
+
+Layer 5  execution/  wallet.py         AES-encrypted Solana hot wallet
+                     jupiter.py        Jupiter v6 SOL⟷USDC swaps (quote + broadcast)
+                     grid_bot.py       Parallel grid strategy (paper trading)
 ```
 
-**Signal weights:** RSI 35% · MACD 35% · Polymarket 30%
+---
+
+## Signal Weights
+
+| Source | Weight | Notes |
+|---|---|---|
+| News NLP | 20% | NewsAPI + local VADER — real-time crypto sentiment |
+| RSI | 15% | Wilder's RSI, oversold/overbought zones |
+| MACD | 15% | Histogram momentum + zero-line crossover |
+| Polymarket | 10% | Fed rate cut expectations + BTC $150k probability |
+| Macro BTC | 10% | BTC 24h change (tanh) + dominance (linear) |
+| Trump / Geo | 10% | Truth Social posts with geopolitical keyword boosts |
+| Fear & Greed | 10% | Contrarian: extreme fear → bullish, extreme greed → bearish |
+
+Composite score in [0, 1]. If a source is unavailable its weight is redistributed
+proportionally across active sources — no phantom neutral votes.
+
+**Thresholds (defaults):** score ≥ 0.62 → BUY · score ≤ 0.38 → SELL · else HOLD
+
+---
+
+## Capital Split
+
+Total capital is divided 50/50 at startup:
+
+- **Signal bot** (50%) — threshold-gated, managed by `RiskManager`
+- **Grid bot** (50%) — always-on oscillation strategy, managed by `GridBot`
+
+Both run concurrently every tick.
+
+---
+
+## Grid Bot
+
+The grid bot runs in parallel with the signal bot and does not depend on signal scores.
+
+- **Capital:** 50% of `INITIAL_CAPITAL_USDC` (default $50)
+- **Levels:** 5 equally-spaced price bands
+- **Range:** set once on first tick from bootstrapped OHLCV (min × 0.99 → max × 1.01)
+- **Logic:** price falling through a level → virtual BUY; price rising while holding → virtual SELL + record PnL to SQLite
+- **Mode:** paper trading only; grid trades are logged to `grid_trades` table
+
+---
+
+## SQLite Persistence
+
+All trade and signal data is stored in `trading_bot.db` (project root, gitignored).
+
+| Table | Contents |
+|---|---|
+| `trades` | Every closed signal-bot position (entry, exit, PnL, reason) |
+| `signal_history` | Every tick's composite score and per-source values |
+| `grid_trades` | Every completed grid-level sell (level, entry, exit, PnL) |
+
+On restart the bot loads the last 100 trades from the DB so `realized_pnl` and the
+dashboard's Recent Trades panel are correct immediately — no warm-up period.
+
+Stats endpoint: **http://localhost:8080/stats**
 
 ---
 
@@ -28,13 +97,14 @@ Layer 5  execution/  wallet.py        Encrypted Solana hot wallet
 ```bash
 cd TRADING-BOT
 pip install -r requirements.txt
+pip install vaderSentiment   # not in requirements.txt — install separately
 ```
 
 ### 2. Configure environment
 
 ```bash
 cp .env.example .env
-# Edit .env — Telegram tokens are optional; bot runs fine without them.
+# Edit .env — Telegram tokens and NewsAPI key are optional; bot runs without them.
 ```
 
 ### 3. Run in paper-trading mode (default, no wallet needed)
@@ -67,7 +137,7 @@ WALLET_ENCRYPTION_KEY=...
 
 ### Step 2 — Fund the wallet
 
-Send USDC (and a small amount of SOL for gas ~0.01 SOL) to the `WALLET_PUBLIC_KEY` address.
+Send USDC (and ~0.01 SOL for gas) to the `WALLET_PUBLIC_KEY` address.
 
 ### Step 3 — Enable live mode
 
@@ -82,35 +152,27 @@ TRADE_AMOUNT_USDC=10.0
 python main.py
 ```
 
+> Short positions are paper-only in live mode. Only long positions execute via Jupiter.
+
+---
+
+## Backtesting
+
+```bash
+python main.py --backtest 90    # 90-day backtest
+python main.py --backtest 365   # 1-year backtest
+```
+
+Output: strategy PnL vs buy-and-hold, win rate, profit factor, max drawdown,
+annualised Sharpe. Backtest uses RSI + MACD only (live API signals not available).
+
 ---
 
 ## Preset Modes
 
-Two named configurations are documented in `.env`. Uncomment the block you want.
+### CONSERVATIVE_MODE — 5-min intervals
 
-### LIVE_MODE — aggressive · 60s tick trading
-
-High-frequency, tight stops. Built for live loops where the bot evaluates
-every 60 seconds and price moves are sub-dollar. **Do not use with daily
-backtest data** — the tiny SL/TP bands will be gapped through by daily candles.
-
-```env
-LOOP_INTERVAL_SECONDS=60
-BUY_THRESHOLD=0.45
-SELL_THRESHOLD=0.55
-STOP_LOSS_PCT=0.001      # −0.1%
-TAKE_PROFIT_PCT=0.002    # +0.2%
-```
-
-To backtest while on LIVE_MODE, override inline so `.env` stays untouched:
-
-```bash
-TAKE_PROFIT_PCT=0.06 STOP_LOSS_PCT=0.03 python3 main.py --backtest 365
-```
-
-### CONSERVATIVE_MODE — proven · 5-min intervals · daily-candle safe
-
-Validated on a 365-day backtest (May 2025 → May 2026, a −52% SOL bear market):
+Validated on a 365-day backtest (May 2025 → May 2026, −52% SOL bear market):
 
 | Metric | Result |
 |---|---|
@@ -125,34 +187,26 @@ Validated on a 365-day backtest (May 2025 → May 2026, a −52% SOL bear market
 LOOP_INTERVAL_SECONDS=300
 BUY_THRESHOLD=0.58
 SELL_THRESHOLD=0.38
-STOP_LOSS_PCT=0.03       # −3%
-TAKE_PROFIT_PCT=0.06     # +6%
+STOP_LOSS_PCT=0.03
+TAKE_PROFIT_PCT=0.06
 ```
 
-**To switch modes:** in `.env`, comment out the active block and uncomment
-the other, then restart the bot.
+### LIVE_MODE — 60s tick, tight stops
 
----
-
-## Backtesting
-
-```bash
-# 90-day backtest (default)
-python main.py --backtest 90
-
-# 1-year backtest
-python main.py --backtest 365
+```env
+LOOP_INTERVAL_SECONDS=60
+BUY_THRESHOLD=0.45
+SELL_THRESHOLD=0.55
+STOP_LOSS_PCT=0.001
+TAKE_PROFIT_PCT=0.002
 ```
-
-Output includes: strategy PnL vs buy-and-hold, win rate, profit factor,
-max drawdown, and annualised Sharpe ratio.
 
 ---
 
 ## Telegram Alerts
 
-1. Message **@BotFather** on Telegram → `/newbot` → copy the token.
-2. Message **@userinfobot** → copy your numeric chat ID.
+1. Message **@BotFather** → `/newbot` → copy token
+2. Message **@userinfobot** → copy numeric chat ID
 3. Add to `.env`:
 
 ```env
@@ -160,7 +214,7 @@ TELEGRAM_BOT_TOKEN=123456:ABC...
 TELEGRAM_CHAT_ID=987654321
 ```
 
-The bot sends: startup notification · every trade · hourly PnL report · shutdown summary.
+Sends: startup · every trade · hourly PnL report · shutdown summary.
 
 ---
 
@@ -168,13 +222,17 @@ The bot sends: startup notification · every trade · hourly PnL report · shutd
 
 | Variable | Default | Description |
 |---|---|---|
-| `DRY_RUN` | `true` | Paper trading (no real swaps) |
-| `LOOP_INTERVAL_SECONDS` | `300` | Evaluation frequency |
-| `TRADE_AMOUNT_USDC` | `10.0` | USDC per trade |
-| `INITIAL_CAPITAL_USDC` | `100.0` | Paper portfolio size |
-| `STOP_LOSS_PCT` | `0.05` | Exit at −5% |
-| `TAKE_PROFIT_PCT` | `0.12` | Exit at +12% |
-| `MAX_DRAWDOWN_PCT` | `0.15` | Halt trading at −15% portfolio |
+| `DRY_RUN` | `true` | Paper trading — no real swaps |
+| `LOOP_INTERVAL_SECONDS` | `300` | Tick interval |
+| `INITIAL_CAPITAL_USDC` | `100.0` | Total capital (split 50/50 with grid) |
+| `TRADE_AMOUNT_USDC` | `10.0` | USDC per signal trade |
+| `MAX_POSITION_SIZE_PCT` | `0.25` | Max 25% of free USDC per trade |
+| `MAX_DRAWDOWN_PCT` | `0.15` | Halt new trades at −15% drawdown |
+| `STOP_LOSS_PCT` | `0.004` | Long stop-loss (0.4%) |
+| `TAKE_PROFIT_PCT` | `0.008` | Long take-profit (0.8%) |
+| `SHORT_STOP_LOSS_PCT` | `0.004` | Short stop-loss |
+| `SHORT_TAKE_PROFIT_PCT` | `0.008` | Short take-profit |
+| `REVERSAL_COOLDOWN_TICKS` | `3` | Ticks before reversing direction |
 | `BUY_THRESHOLD` | `0.62` | Composite score ≥ this → BUY |
 | `SELL_THRESHOLD` | `0.38` | Composite score ≤ this → SELL |
 | `RSI_PERIOD` | `14` | RSI lookback |
@@ -183,16 +241,16 @@ The bot sends: startup notification · every trade · hourly PnL report · shutd
 | `MACD_FAST` | `12` | MACD fast EMA |
 | `MACD_SLOW` | `26` | MACD slow EMA |
 | `MACD_SIGNAL_PERIOD` | `9` | MACD signal EMA |
+| `DASHBOARD_PORT` | `8080` | Local dashboard port |
 
 ---
 
 ## Dashboard
 
-The bot writes `data.json` after every iteration. The dashboard polls it
-every 5 seconds. No build step required — it's vanilla HTML served by
-Python's built-in HTTP server.
+The bot writes `data.json` after every tick. The dashboard polls it every 5 seconds.
+No build step — vanilla HTML served by Python's built-in HTTP server.
 
-**http://localhost:8080**
+**http://localhost:8080** · Stats API: **http://localhost:8080/stats**
 
 ---
 
@@ -209,23 +267,30 @@ TRADING-BOT/
 │
 ├── layers/
 │   ├── data/
-│   │   ├── price_feed.py     # CoinGecko SOL price + OHLCV
-│   │   └── polymarket.py     # Polymarket Gamma API sentiment
+│   │   ├── price_feed.py     # CoinGecko SOL price + OHLCV bootstrap
+│   │   ├── polymarket.py     # Polymarket Gamma API sentiment
+│   │   ├── news_sentiment.py # NewsAPI + VADER NLP
+│   │   ├── macro.py          # BTC direction + dominance
+│   │   ├── trump_signal.py   # Truth Social RSS + keyword scoring
+│   │   ├── fear_greed.py     # Crypto Fear & Greed Index (contrarian)
+│   │   └── database.py       # SQLite: trades, signals, grid_trades
 │   ├── analysis/
-│   │   └── indicators.py     # RSI, MACD, normalisation
+│   │   ├── indicators.py     # RSI, MACD, normalisation
+│   │   └── regime.py         # Market regime detection (ADX/ATR)
 │   ├── decision/
 │   │   └── signal_engine.py  # Weighted signal aggregation
 │   ├── risk/
-│   │   └── risk_manager.py   # Position, SL/TP, drawdown
+│   │   └── risk_manager.py   # Position sizing, SL/TP, drawdown, shorts
 │   └── execution/
-│       ├── wallet.py         # Fernet-encrypted keypair
-│       └── jupiter.py        # Jupiter v6 quote + swap
+│       ├── wallet.py         # AES-encrypted keypair
+│       ├── jupiter.py        # Jupiter v6 quote + swap
+│       └── grid_bot.py       # Parallel grid strategy
 │
 ├── alerts/
-│   └── telegram.py           # Telegram Bot API messages
+│   └── telegram.py           # Telegram Bot API notifications
 │
 ├── dashboard/
-│   ├── server.py             # Threaded HTTP server (port 8080)
+│   ├── server.py             # HTTP server (port 8080) + /stats endpoint
 │   └── index.html            # Dark-theme dashboard (Chart.js)
 │
 └── backtesting/
@@ -237,6 +302,6 @@ TRADING-BOT/
 
 ## Disclaimer
 
-This software is for educational purposes only. Cryptocurrency trading
-involves substantial risk of loss. Past performance during backtests does
-not guarantee future results. Never trade more than you can afford to lose.
+This software is for educational purposes only. Cryptocurrency trading involves
+substantial risk of loss. Past backtest performance does not guarantee future results.
+Never trade more than you can afford to lose.

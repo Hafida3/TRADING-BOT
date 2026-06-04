@@ -1,23 +1,17 @@
 """
 Layer 1 – Data: Polymarket prediction market sentiment.
 
-Root-cause of the 0.500 stall (two bugs fixed):
-  1. Real liquid markets use `outcomePrices` (JSON string array), not `tokens[].price`.
-  2. The API has no keyword filter; scanning 100 markets rarely hit crypto markets.
-
-Fix: fetch two specific high-liquidity event groups by slug, parse outcomePrices.
-
 Signal sources
 ──────────────
   Fed rate cuts 2026  (60%)  — macro risk-on/off proxy
-    slug: how-many-fed-rate-cuts-in-2026   volume ~$4.5M
+    slug: how-many-fed-rate-cuts-in-2026
     Score: expected cuts / 4.0  (0 cuts = 0.0 bearish, 4+ cuts = 1.0 bullish)
 
   BTC $150k by Dec 31, 2026  (40%)  — crypto directional proxy
-    slug: when-will-bitcoin-hit-150k       volume ~$23.8M
+    slug: when-will-bitcoin-hit-150k
     Score: P(YES) / 0.50  capped at 1.0   (50% prob = fully bullish)
 
-Cache: 15 minutes (these markets move slowly).
+Cache: 15 minutes.
 """
 
 from __future__ import annotations

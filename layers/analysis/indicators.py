@@ -80,7 +80,6 @@ def calculate_macd(
 def normalize_macd(histogram: float) -> float:
     """
     Map MACD histogram to [0, 1] via tanh.
-    Scale factor 0.08 is tuned for SOL (~$100-300 range).
       histogram > 0 → score > 0.5 (bullish)
       histogram < 0 → score < 0.5 (bearish)
     """

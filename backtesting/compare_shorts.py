@@ -345,7 +345,7 @@ def run_comparison(days: int = 365) -> None:
     elif delta < -0.001:
         print(f"\n  VERDICT ❌  Long-only outperforms by ${-delta:.4f} "
               f"({lo['total_pnl_pct'] - ls['total_pnl_pct']:+.2%}).")
-        print(f"             Shorts hurt performance — do NOT implement Drift.")
+        print(f"             Shorts detract from performance at these settings.")
     else:
         print(f"\n  VERDICT ➡  Negligible difference (${delta:+.4f}). Shorts are neutral.")
 

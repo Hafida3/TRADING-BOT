@@ -38,8 +38,6 @@ def _get_analyzer():
 
 
 def _fetch_headlines(api_key: str, max_articles: int = 20) -> list[str]:
-    # Note: NewsAPI free tier does not support the 'from' date filter;
-    # sortBy=publishedAt gives the most recent articles anyway.
     try:
         resp = requests.get(
             NEWSAPI_BASE,

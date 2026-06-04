@@ -42,7 +42,7 @@ def fetch_historical_ohlcv(days: int = 90) -> list[dict]:
         ]
         candles.sort(key=lambda c: c["timestamp"])
         print(f"[DataLoader] Got {len(candles)} candles.")
-        time.sleep(1)  # be polite to the free API
+        time.sleep(1)
         return candles
     except Exception as exc:
         print(f"[DataLoader] Error: {exc}")

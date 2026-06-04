@@ -34,7 +34,6 @@ MAX_DRAWDOWN_PCT: float = float(os.getenv("MAX_DRAWDOWN_PCT", "0.15"))
 STOP_LOSS_PCT: float = float(os.getenv("STOP_LOSS_PCT", "0.004"))
 TAKE_PROFIT_PCT: float = float(os.getenv("TAKE_PROFIT_PCT", "0.008"))
 
-# Short-specific TP/SL — tighter for ranging markets
 SHORT_TAKE_PROFIT_PCT: float = float(os.getenv("SHORT_TAKE_PROFIT_PCT", "0.008"))
 SHORT_STOP_LOSS_PCT: float = float(os.getenv("SHORT_STOP_LOSS_PCT", "0.004"))
 

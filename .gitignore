@@ -1,0 +1,8 @@
+.env
+trading_bot.db
+__pycache__/
+*.pyc
+*.log
+nohup.out
+sell_signals.csv
+.DS_Store

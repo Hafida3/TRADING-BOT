@@ -8,7 +8,7 @@ An autonomous AI trading agent that makes independent decisions based on 7 signa
 
 ![Live dashboard showing SOL/USDC signal bot in action](dashboard_screenshot.png)
 
-Real-time view at **http://localhost:8080** — updates every 5 seconds. Shows current price, composite signal score, per-source signal bars, open positions, recent trades, and the grid bot price chart.
+Real-time view on local machine — dashboard auto-refreshes every 5 seconds. Shows current price, composite signal score, per-source signal bars, open positions, recent trades, and the grid bot price chart.
 
 ---
 

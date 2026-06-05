@@ -12,6 +12,14 @@ Real-time view on local machine — dashboard auto-refreshes every 5 seconds. Sh
 
 ---
 
+## Groq LLM Decision Engine
+
+Decisions are now made by a Groq LLM (llama-3.1-8b-instant) instead of fixed weighted scores. The agent reasons about all 7 signals and explains its decision in natural language.
+
+![Dashboard showing the LLM REASONING panel](dashboard2_screenshot.png)
+
+---
+
 ## Architecture — 5 Layers
 
 ```

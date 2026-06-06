@@ -54,6 +54,26 @@ class GridBot:
             for i in range(num_levels)
         ]
 
+    # ── Auto-rerange ──────────────────────────────────────────────────────
+
+    def _rerange(self, price: float) -> None:
+        """Reset grid range centred on price ±10%. Liquidates open positions at current price."""
+        for lvl in self.levels:
+            if lvl.has_position:
+                self.free_usdc += lvl.sol_amount * price
+                lvl.has_position = False
+                lvl.sol_amount   = 0.0
+                lvl.entry_price  = 0.0
+
+        self.low  = round(price * 0.90, 4)
+        self.high = round(price * 1.10, 4)
+        step = (self.high - self.low) / (self.num_levels - 1)
+        self.levels = [
+            GridLevel(index=i, price=round(self.low + i * step, 4))
+            for i in range(self.num_levels)
+        ]
+        print(f"[Grid] Auto-reranged to ${self.low:.2f} – ${self.high:.2f}")
+
     # ── Tick update ───────────────────────────────────────────────────────
 
     def update(self, current_price: float) -> list[dict]:
@@ -63,6 +83,9 @@ class GridBot:
         if self.last_price is None:
             self.last_price = current_price
             return []
+
+        if current_price < self.low or current_price > self.high:
+            self._rerange(current_price)
 
         prev     = self.last_price
         executed: list[dict] = []

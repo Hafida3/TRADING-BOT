@@ -5,3 +5,4 @@ numpy>=1.26.0
 cryptography>=41.0.0
 solders>=0.21.0
 anthropic>=0.40.0
+vaderSentiment>=3.3.2

@@ -149,6 +149,62 @@ def _memory_context(lessons: list[str]) -> str:
     return "Recent trade lessons:\n" + "\n".join(lessons[-8:])
 
 
+def run_weekly_reflection(memory_lessons: list[str]) -> None:
+    """Call claude-sonnet-4-5 to analyse last 50 trades and append findings to memory.md."""
+    try:
+        from layers.data.database import get_recent_trades as _get_trades
+        trades = _get_trades(50)
+        if not trades:
+            print("[Reflect] No trades to analyse yet.")
+            return
+
+        lines = []
+        for t in trades:
+            pnl = t.get("pnl_usdc", 0) or 0
+            lines.append(
+                f"  {t.get('direction','long').upper()} "
+                f"entry=${t.get('entry_price',0):.2f} "
+                f"exit=${t.get('exit_price',0):.2f} "
+                f"pnl=${pnl:+.2f} "
+                f"regime={t.get('regime','?')}"
+            )
+        trades_text = "\n".join(lines)
+
+        prompt = (
+            f"You are a quantitative trading analyst reviewing {len(trades)} recent SOL/USDC trades.\n\n"
+            f"Trade history:\n{trades_text}\n\n"
+            f"Analyse this data and answer:\n"
+            f"1. Which market regime (trending/ranging/choppy/unknown) produced the best win rate?\n"
+            f"2. What was the average PnL for winning vs losing trades?\n"
+            f"3. Which signal context (direction of entry — long vs short) performed better?\n"
+            f"4. What is the single most important lesson from this period?\n\n"
+            f"Reply in 4 concise bullet points, one per question. Be specific with numbers."
+        )
+
+        import anthropic
+        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        msg = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        analysis = msg.content[0].text.strip()
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d UTC")
+
+        lesson = (
+            f"\n### Weekly Reflection — {date_str} ({len(trades)} trades analysed)\n"
+            + "\n".join(f"  {l}" for l in analysis.splitlines())
+            + "\n"
+        )
+        with MEMORY_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(lesson)
+        memory_lessons.append(lesson.strip())
+        print(f"[Reflect] Weekly Sonnet reflection appended to memory.md")
+        print(f"[Reflect] {analysis[:120]}…")
+    except Exception as exc:
+        print(f"[Reflect] Error: {exc}")
+
+
 def build_state(
     price: float,
     rsi: float | None,
@@ -622,6 +678,10 @@ def run():
                     trade_count=len(risk.trades),
                     win_rate=risk.win_rate,
                 )
+
+            # ── 12. Weekly Sonnet reflection (every 2016 ticks ≈ 7 days) ──
+            if iteration % 2016 == 0:
+                run_weekly_reflection(memory_lessons)
 
         except Exception as exc:
             print(f"[Main] Unhandled error: {exc}")

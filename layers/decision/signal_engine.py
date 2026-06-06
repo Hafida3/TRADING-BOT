@@ -97,6 +97,7 @@ def _call_claude(
     fear_greed_label: str,
     regime:          str,
     top_headline:    str,
+    agent_memory:    str = "",
 ) -> tuple[str, str] | None:
     """Call Claude claude-3-haiku-20240307. Returns (action, reasoning) or None."""
     if not config.ANTHROPIC_API_KEY:
@@ -105,6 +106,10 @@ def _call_claude(
     def fmt(v, d=3):
         return f"{v:.{d}f}" if v is not None else "N/A"
 
+    memory_ctx = (
+        f"\n\nYour past trade lessons:\n{agent_memory[-800:]}"
+        if agent_memory else ""
+    )
     prompt = (
         f"You are an autonomous crypto trading agent. "
         f"Given these market signals: "
@@ -113,7 +118,8 @@ def _call_claude(
         f"News={fmt(news_score)} ({top_headline or 'no headline'}), "
         f"Macro={fmt(macro_score)}, Fear&Greed={fear_greed_raw}/100 ({fear_greed_label}), "
         f"Regime={regime}. "
-        f"Your soul: protect capital, generate asymmetric gains. "
+        f"Your soul: protect capital, generate asymmetric gains."
+        f"{memory_ctx} "
         f"Decide: BUY / SELL / HOLD and explain why in one sentence."
     )
 
@@ -153,6 +159,7 @@ def _call_groq(
     recent_trades:         list,
     composite_score:       float,
     top_headline:          str,
+    agent_memory:          str = "",
 ) -> tuple[str, float, str] | None:
     """Call Groq llama-3.1-8b-instant. Returns (action, confidence, reasoning) or None."""
     if not config.GROQ_API_KEY:
@@ -175,6 +182,7 @@ def _call_groq(
         trades_text = "\n".join(lines)
 
     headline_ctx = f" Top headline: {top_headline}" if top_headline else ""
+    memory_ctx   = f"\n\nPast trade lessons:\n{agent_memory[-600:]}" if agent_memory else ""
     user_content = f"""Analyze SOL/USDC signals and decide BUY, SELL, or HOLD.
 
 SOL Price: ${price:.4f}
@@ -187,7 +195,7 @@ Regime: {regime} | Composite: {composite_score:.3f} [BUY≥{config.BUY_THRESHOLD
 Recent trades:
 {trades_text}
 
-Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reasoning":"1-2 sentences"}}"""
+Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reasoning":"1-2 sentences"}}{memory_ctx}"""
 
     try:
         resp = requests.post(
@@ -258,6 +266,7 @@ def generate_signal(
     regime:           str = "unknown",
     recent_trades:    Optional[list]  = None,
     top_headline:     str = "",
+    agent_memory:     str = "",
 ) -> Signal:
 
     # Step 1: composite (always — needed for display bars + fallback)
@@ -324,6 +333,7 @@ def generate_signal(
         fear_greed_label=fear_greed_label,
         regime=regime,
         top_headline=top_headline,
+        agent_memory=agent_memory,
     )
 
     if claude_result:
@@ -358,6 +368,7 @@ def generate_signal(
         recent_trades=recent_trades or [],
         composite_score=composite,
         top_headline=top_headline,
+        agent_memory=agent_memory,
     )
 
     if groq_result:

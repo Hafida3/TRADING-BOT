@@ -23,6 +23,7 @@ Protect capital and generate asymmetric gains by exploiting crypto market ineffi
 - Never open a position if regime is UNKNOWN for more than 5 consecutive ticks
 
 ## Memory & Learning
+- Before every decision, consult memory.md for past lessons
 - After every 10 closed trades, analyze which signal was most predictive
 - Log signal accuracy to SQLite signal_history table
 - Adjust confidence in signals based on recent performance

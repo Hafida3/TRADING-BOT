@@ -41,9 +41,10 @@ from layers.execution.jupiter import buy_sol_with_usdc, sell_sol_for_usdc
 from layers.execution.wallet import load_keypair
 from layers.risk.risk_manager import RiskManager
 
-DATA_JSON = Path(__file__).parent / "data.json"
-SELL_LOG  = Path(__file__).parent / "sell_signals.csv"
-SOUL_FILE = Path(__file__).parent / "soul.md"
+DATA_JSON   = Path(__file__).parent / "data.json"
+SELL_LOG    = Path(__file__).parent / "sell_signals.csv"
+SOUL_FILE   = Path(__file__).parent / "soul.md"
+MEMORY_FILE = Path(__file__).parent / "memory.md"
 MAX_PRICE_HISTORY = 200
 
 _SELL_LOG_FIELDS = [
@@ -93,6 +94,59 @@ def write_state(state: dict):
         DATA_JSON.write_text(json.dumps(state, indent=2, default=str))
     except Exception as exc:
         print(f"[Main] data.json write error: {exc}")
+
+
+def append_memory_lesson(
+    trade:       dict,
+    exit_price:  float,
+    regime:      str,
+    rsi:         float | None,
+    polymarket:  float | None,
+    fg_raw:      int | None,
+) -> str:
+    """Append one trade lesson to memory.md. Returns the lesson line."""
+    pnl       = trade.get("pnl_usdc", 0) or 0
+    win       = pnl > 0
+    direction = trade.get("direction", "long").upper()
+    entry     = trade.get("entry_price", 0)
+    outcome   = "WIN" if win else "LOSS"
+    date_str  = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    rsi_str = f"RSI={rsi:.1f}" if rsi is not None else "RSI=?"
+    pm_str  = f"PM={polymarket:.2f}" if polymarket is not None else "PM=?"
+    fg_str  = f"F&G={fg_raw}" if fg_raw is not None else "F&G=?"
+
+    if win:
+        lesson = (
+            f"Signal confluence confirmed in {regime} regime; "
+            f"entry at ${entry:.2f} rewarded."
+        )
+    else:
+        lesson = (
+            f"Stop triggered in {regime} regime from ${entry:.2f}; "
+            f"await stronger signal alignment before next entry."
+        )
+
+    line = (
+        f"- **{date_str}**: {direction} at ${entry:.2f} → {outcome} "
+        f"(exit ${exit_price:.2f}, PnL ${pnl:+.2f}). "
+        f"Signals: {rsi_str}, {pm_str}, {fg_str}. "
+        f"Lesson: {lesson}"
+    )
+    try:
+        with MEMORY_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+        print(f"[Memory] {'✓ WIN' if win else '✗ LOSS'} lesson appended (PnL ${pnl:+.2f})")
+    except Exception as exc:
+        print(f"[Memory] Write error: {exc}")
+    return line
+
+
+def _memory_context(lessons: list[str]) -> str:
+    """Return last 8 lessons formatted for LLM context."""
+    if not lessons:
+        return ""
+    return "Recent trade lessons:\n" + "\n".join(lessons[-8:])
 
 
 def build_state(
@@ -222,6 +276,23 @@ def run():
         print(f"[Soul] Loaded — Mission: {mission_line}")
     else:
         print("[Soul] Warning: soul.md not found — agent running without identity")
+
+    # Load agent memory (Trade Lessons section)
+    memory_lessons: list[str] = []
+    if MEMORY_FILE.exists():
+        try:
+            mem_content = MEMORY_FILE.read_text(encoding="utf-8")
+            if "## Trade Lessons" in mem_content:
+                section = mem_content.split("## Trade Lessons")[1]
+                memory_lessons = [
+                    l.strip() for l in section.splitlines()
+                    if l.strip().startswith("-")
+                ]
+            print(f"[Memory] Loaded: {len(memory_lessons)} trade lesson(s)")
+        except Exception as exc:
+            print(f"[Memory] Load error: {exc}")
+    else:
+        print("[Memory] Warning: memory.md not found")
 
     keypair  = setup_keypair()
     telegram = TelegramAlerter(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID)
@@ -364,6 +435,7 @@ def run():
                 regime=regime_info.get("regime", "unknown"),
                 recent_trades=get_recent_trades(5),
                 top_headline=top_headline,
+                agent_memory=_memory_context(memory_lessons),
             )
             print(f"  Signal  : {sig.action} ({sig.score:.3f}) | {sig.reason}")
 
@@ -413,6 +485,9 @@ def run():
                 risk.last_trade_direction = "long"
                 pnl = trade["pnl_usdc"]
                 print(f"  {long_exit} triggered (LONG) | PnL ${pnl:+.2f}")
+                memory_lessons.append(append_memory_lesson(
+                    trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
+                ))
 
                 if not config.DRY_RUN and keypair:
                     sell_sol_for_usdc(
@@ -429,6 +504,9 @@ def run():
                 risk.last_trade_direction = "short"
                 pnl = trade["pnl_usdc"]
                 print(f"  {short_exit} triggered (SHORT) | PnL ${pnl:+.2f}")
+                memory_lessons.append(append_memory_lesson(
+                    trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
+                ))
                 telegram.send_trade(short_exit, price, trade["size_usdc"],
                                     pnl=pnl, dry_run=config.DRY_RUN)
 
@@ -442,6 +520,9 @@ def run():
                     risk.last_trade_direction = "short"
                     pnl = trade["pnl_usdc"]
                     print(f"  Covering SHORT @ ${price} | PnL ${pnl:+.2f}")
+                    memory_lessons.append(append_memory_lesson(
+                        trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
+                    ))
                     telegram.send_trade("COVER", price, trade["size_usdc"],
                                         pnl=pnl, dry_run=config.DRY_RUN)
                 else:
@@ -479,6 +560,9 @@ def run():
                         risk.last_trade_direction = "long"
                         pnl = trade["pnl_usdc"]
                         print(f"  Executing SELL | PnL ${pnl:+.2f}")
+                        memory_lessons.append(append_memory_lesson(
+                            trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
+                        ))
                         if not config.DRY_RUN and keypair:
                             sell_sol_for_usdc(
                                 trade["sol_amount"], keypair,

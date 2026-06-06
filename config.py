@@ -60,6 +60,10 @@ MACD_SIGNAL_PERIOD: int = int(os.getenv("MACD_SIGNAL_PERIOD", "9"))
 # Minimum candles needed before indicators are reliable
 MIN_CANDLES_REQUIRED: int = MACD_SLOW + MACD_SIGNAL_PERIOD + 5
 
+# ── Groq LLM ─────────────────────────────────────────────────────────────────
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL:   str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+
 # ── Grid Bot ──────────────────────────────────────────────────────────────────
 _grid_low  = os.getenv("GRID_LOW_PRICE")
 _grid_high = os.getenv("GRID_HIGH_PRICE")

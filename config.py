@@ -10,9 +10,11 @@ TRADE_AMOUNT_USDC: float = float(os.getenv("TRADE_AMOUNT_USDC", "10.0"))
 INITIAL_CAPITAL_USDC: float = float(os.getenv("INITIAL_CAPITAL_USDC", "100.0"))
 
 # ── Solana ────────────────────────────────────────────────────────────────────
+SOLANA_NETWORK: str = os.getenv("SOLANA_NETWORK", "mainnet")   # "devnet" | "mainnet"
 SOLANA_RPC_URL: str = os.getenv(
     "SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"
 )
+DEVNET_WALLET_PATH: str = os.getenv("DEVNET_WALLET_PATH", "./devnet-wallet.json")
 WALLET_PUBLIC_KEY: str = os.getenv("WALLET_PUBLIC_KEY", "")
 WALLET_PRIVATE_KEY_ENCRYPTED: str = os.getenv("WALLET_PRIVATE_KEY_ENCRYPTED", "")
 WALLET_ENCRYPTION_KEY: str = os.getenv("WALLET_ENCRYPTION_KEY", "")

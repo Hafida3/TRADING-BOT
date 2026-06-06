@@ -51,7 +51,9 @@ def _parse_rss(content: bytes) -> list[str]:
         items = list(root.iter("item")) or list(root.iter(f"{ns}entry"))
         titles: list[str] = []
         for item in items[:25]:
-            el = item.find("title") or item.find(f"{ns}title")
+            el = item.find("title")
+            if el is None:
+                el = item.find(f"{ns}title")
             if el is not None and el.text:
                 titles.append(el.text.strip())
         return titles

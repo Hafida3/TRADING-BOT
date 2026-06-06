@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SOL/USDC MATRIX TRADER</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -263,6 +264,10 @@ html, body {
   letter-spacing: 1px;
 }
 
+/* ── PnL chart panel ────────────────────────────────────── */
+#pnl-panel { flex-shrink: 0; }
+#pnlChart  { display: block; width: 100% !important; height: 180px !important; }
+
 /* Utility */
 .pos   { color: var(--green)              !important; }
 .neg   { color: var(--red)                !important; }
@@ -431,6 +436,15 @@ html, body {
     <div style="display:flex;gap:5px;" id="grid-levels-wrap">
       <div style="color:rgba(0,255,65,0.3);font-size:10px;">Initializing…</div>
     </div>
+  </div>
+
+  <!-- PnL Curve -->
+  <div class="panel" id="pnl-panel">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+      <span class="plabel" style="margin:0;">[ PNL_CURVE ]</span>
+      <span id="pnl-summary" style="font-size:9px;color:var(--green-dim);letter-spacing:1px;"></span>
+    </div>
+    <canvas id="pnlChart"></canvas>
   </div>
 
   <!-- Status bar -->
@@ -741,6 +755,103 @@ function render(d) {
   $('last-upd').textContent = 'LAST UPDATE: ' + new Date().toLocaleTimeString();
 }
 
+// ── PnL Curve ─────────────────────────────────────────────────
+let _pnlChart = null;
+
+function loadPnlChart() {
+  fetch('/api/trades?_=' + Date.now())
+    .then(r => r.json())
+    .then(trades => {
+      if (!Array.isArray(trades) || trades.length === 0) {
+        $('pnl-summary').textContent = 'NO TRADES YET';
+        return;
+      }
+
+      // Build cumulative PnL series
+      let cum = 0;
+      const labels = [];
+      const data   = [];
+      trades.forEach((t, i) => {
+        cum += (t.pnl_usdc ?? 0);
+        labels.push(i + 1);
+        data.push(parseFloat(cum.toFixed(4)));
+      });
+
+      const finalPnl = data[data.length - 1] ?? 0;
+      const color    = finalPnl >= 0 ? '#00ff41' : '#ff0040';
+      const fillAbove = finalPnl >= 0 ? 'rgba(0,255,65,0.07)' : 'rgba(255,0,64,0.04)';
+      const fillBelow = 'rgba(255,0,64,0.07)';
+
+      $('pnl-summary').innerHTML =
+        'TRADES: <span style="color:var(--green)">' + trades.length + '</span>' +
+        '&nbsp;|&nbsp;CUMULATIVE: <span class="' + (finalPnl >= 0 ? 'pos' : 'neg') + '">' +
+        (finalPnl >= 0 ? '+' : '') + '$' + Math.abs(finalPnl).toFixed(2) + '</span>';
+
+      const cfg = {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            data,
+            borderColor:  color,
+            borderWidth:  1.5,
+            pointRadius:  0,
+            tension:      0.25,
+            fill: { target: 'origin', above: fillAbove, below: fillBelow },
+          }],
+        },
+        options: {
+          responsive:          false,
+          maintainAspectRatio: false,
+          animation:           false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => (ctx.parsed.y >= 0 ? '+' : '') + '$' + ctx.parsed.y.toFixed(2),
+              },
+              backgroundColor: 'rgba(0,18,4,0.92)',
+              borderColor:     'rgba(0,255,65,0.3)',
+              borderWidth:     1,
+              titleColor:      'rgba(0,255,65,0.6)',
+              bodyColor:       color,
+              titleFont:       { family: 'Courier New', size: 9 },
+              bodyFont:        { family: 'Courier New', size: 10 },
+            },
+          },
+          scales: {
+            x: {
+              ticks:  { color: 'rgba(0,255,65,0.35)', font: { size: 8, family: 'Courier New' }, maxTicksLimit: 10 },
+              grid:   { color: 'rgba(0,255,65,0.07)' },
+              border: { color: 'rgba(0,255,65,0.18)' },
+            },
+            y: {
+              ticks: {
+                color: 'rgba(0,255,65,0.35)',
+                font:  { size: 8, family: 'Courier New' },
+                callback: v => (v >= 0 ? '+' : '') + '$' + v.toFixed(2),
+              },
+              grid:   { color: 'rgba(0,255,65,0.07)' },
+              border: { color: 'rgba(0,255,65,0.18)' },
+            },
+          },
+        },
+      };
+
+      if (_pnlChart) {
+        _pnlChart.data.labels      = labels;
+        _pnlChart.data.datasets[0].data        = data;
+        _pnlChart.data.datasets[0].borderColor = color;
+        _pnlChart.update('none');
+      } else {
+        _pnlChart = new Chart($('pnlChart'), cfg);
+      }
+    })
+    .catch(() => { $('pnl-summary').textContent = 'ERROR LOADING TRADES'; });
+
+  setTimeout(loadPnlChart, 60_000);
+}
+
 // ── Fetch loop ────────────────────────────────────────────────
 let countdown = 0;
 
@@ -770,6 +881,7 @@ setInterval(() => {
 })();
 
 fetchData();
+loadPnlChart();
 </script>
 </body>
 </html>

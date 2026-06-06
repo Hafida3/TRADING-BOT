@@ -25,6 +25,8 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
             self._serve_data_json()
         elif self.path.startswith("/stats"):
             self._serve_stats()
+        elif self.path.startswith("/api/trades"):
+            self._serve_trades()
         else:
             super().do_GET()
 
@@ -47,6 +49,29 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
             from layers.data.database import get_stats
             stats = get_stats()
             payload = json.dumps(stats).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(payload)
+        except Exception as exc:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(exc)}).encode())
+
+    def _serve_trades(self):
+        try:
+            import sqlite3
+            db_path = Path(__file__).parent.parent / "trading_bot.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT id, timestamp, direction, entry_price, exit_price, pnl_usdc "
+                "FROM trades ORDER BY timestamp ASC"
+            ).fetchall()
+            conn.close()
+            payload = json.dumps([dict(r) for r in rows]).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")

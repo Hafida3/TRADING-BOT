@@ -20,6 +20,25 @@ Decisions are now made by a Groq LLM (llama-3.1-8b-instant) instead of fixed wei
 
 ---
 
+## Agent Architecture
+
+The bot runs as a **ReAct agent** — a continuous loop of Observe → Reason → Act → Reflect:
+
+| Step | What happens |
+|---|---|
+| **Observe** | Collect all 7 signals: price, RSI, MACD, Polymarket, news, macro, Trump/geo, Fear & Greed |
+| **Reason** | Groq LLM (llama-3.1-8b-instant) reasons across all signals and explains its decision in natural language |
+| **Act** | Execute BUY / SELL / HOLD via Jupiter v6 (live) or paper account (dry run) |
+| **Reflect** | Log signal snapshot + trade outcome to SQLite; risk manager updates PnL and drawdown state |
+
+**Heartbeat:** 300 seconds (configurable via `LOOP_INTERVAL_SECONDS`).
+
+**Identity:** [`soul.md`](soul.md) defines the agent's mission, core values, personality, and absolute rules (e.g. never exceed 20% drawdown, minimum 3-tick cooldown between reversals). It is read at startup before the first heartbeat.
+
+**Episodic memory:** SQLite (`trading_bot.db`) persists every trade, signal snapshot, and grid execution across restarts. The last 100 trades are reloaded into memory on startup so the agent's PnL history and risk state are continuous.
+
+---
+
 ## Architecture — 5 Layers
 
 ```

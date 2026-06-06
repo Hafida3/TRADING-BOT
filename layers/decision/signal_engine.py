@@ -2,7 +2,7 @@
 Layer 3 – Decision: LLM ReAct decision engine with tiered fallback.
 
 Priority:
-  1. Claude API  (claude-3-haiku-20240307) — primary ReAct agent
+  1. Claude API  (claude-haiku-4-5)        — primary ReAct agent
   2. Groq API    (llama-3.1-8b-instant)    — secondary LLM fallback
   3. Weighted composite score              — final offline fallback
 
@@ -99,7 +99,7 @@ def _call_claude(
     top_headline:    str,
     agent_memory:    str = "",
 ) -> tuple[str, str] | None:
-    """Call Claude claude-3-haiku-20240307. Returns (action, reasoning) or None."""
+    """Call claude-haiku-4-5. Returns (action, reasoning) or None."""
     if not config.ANTHROPIC_API_KEY:
         return None
 
@@ -127,7 +127,7 @@ def _call_claude(
         import anthropic
         client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         msg = client.messages.create(
-            model="claude-3-haiku-20240307",
+            model="claude-haiku-4-5",
             max_tokens=120,
             messages=[{"role": "user", "content": prompt}],
         )

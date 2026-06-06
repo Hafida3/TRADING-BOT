@@ -17,6 +17,13 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after initial schema creation."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(signal_history)")}
+    if "llm_reasoning" not in existing:
+        conn.execute("ALTER TABLE signal_history ADD COLUMN llm_reasoning TEXT")
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript("""
@@ -37,19 +44,20 @@ def init_db() -> None:
             );
 
             CREATE TABLE IF NOT EXISTS signal_history (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp   REAL NOT NULL,
-                signal      TEXT,
-                score       REAL,
-                rsi         REAL,
-                macd        REAL,
-                polymarket  REAL,
-                news        REAL,
-                macro       REAL,
-                trump       REAL,
-                fear_greed  REAL,
-                regime      TEXT,
-                price       REAL
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp     REAL NOT NULL,
+                signal        TEXT,
+                score         REAL,
+                rsi           REAL,
+                macd          REAL,
+                polymarket    REAL,
+                news          REAL,
+                macro         REAL,
+                trump         REAL,
+                fear_greed    REAL,
+                regime        TEXT,
+                price         REAL,
+                llm_reasoning TEXT
             );
 
             CREATE TABLE IF NOT EXISTS grid_trades (
@@ -61,6 +69,7 @@ def init_db() -> None:
                 pnl_usdc    REAL
             );
         """)
+        _migrate(conn)
 
 
 def save_trade(
@@ -105,15 +114,16 @@ def save_signal(
     fear_greed: Optional[float],
     regime: Optional[str],
     price: Optional[float],
+    llm_reasoning: Optional[str] = None,
 ) -> None:
     with _connect() as conn:
         conn.execute(
             """INSERT INTO signal_history
                (timestamp, signal, score, rsi, macd, polymarket, news, macro,
-                trump, fear_greed, regime, price)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                trump, fear_greed, regime, price, llm_reasoning)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (timestamp, signal, score, rsi, macd, polymarket, news, macro,
-             trump, fear_greed, regime, price),
+             trump, fear_greed, regime, price, llm_reasoning),
         )
 
 

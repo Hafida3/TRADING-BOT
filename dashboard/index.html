@@ -287,6 +287,7 @@ html, body {
     <div id="hdr-meta">
       <span id="hdr-mode" class="chip dry">DRY RUN</span>
       <span>ITER: <span id="hdr-iter">—</span></span>
+      <span id="hdr-clock" style="letter-spacing:1px;">—</span>
       <span id="hdr-ts">—</span>
     </div>
   </div>
@@ -355,10 +356,11 @@ html, body {
     </div>
 
     <div class="panel sig-card">
-      <div class="sig-hdr"><span class="sig-name">NEWS NLP</span><span class="sig-wt">×20%</span></div>
+      <div class="sig-hdr"><span class="sig-name">NEWS NLP</span><span class="sig-wt">×25%</span></div>
       <div class="sig-num" id="news-num">—</div>
       <div class="btrack"><div class="bfill g" id="news-bar" style="width:0%"></div></div>
       <div class="sig-sub" id="news-sub"></div>
+      <div id="news-headline" style="font-size:8px;color:rgba(0,255,65,0.4);margin-top:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;letter-spacing:.3px;"></div>
     </div>
 
     <div class="panel sig-card">
@@ -382,6 +384,15 @@ html, body {
       <div class="sig-sub" id="fg-sub"></div>
     </div>
 
+  </div>
+
+  <!-- LLM Reasoning panel -->
+  <div class="panel" style="flex-shrink:0;padding:5px 12px;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="plabel" style="margin:0;flex-shrink:0;">LLM REASONING</span>
+      <span id="llm-badge" class="chip" style="font-size:8px;padding:0 5px;display:none;flex-shrink:0;"></span>
+      <span id="llm-text" style="font-size:10px;color:var(--green-dim);letter-spacing:.3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">—</span>
+    </div>
   </div>
 
   <!-- Bottom: position | trades -->
@@ -567,6 +578,13 @@ function render(d) {
     $('news-sub').textContent = newsCt + ' HEADLINES';
   }
 
+  // Top headline under News card
+  const topHl    = d.top_headline ?? '';
+  const topHlSrc = d.top_headline_source ?? '';
+  $('news-headline').textContent = topHl
+    ? (topHlSrc ? topHlSrc + ': ' : '') + topHl
+    : '';
+
   // Macro BTC ×15%
   const mac = d.macro_score ?? 0;
   $('macro-num').textContent = f3(mac);
@@ -699,6 +717,26 @@ function render(d) {
     }).join('');
   }
 
+  // LLM Reasoning
+  const llmBadge = $('llm-badge');
+  const llmText  = $('llm-text');
+  if (d.llm_reasoning) {
+    llmText.textContent = d.llm_reasoning;
+    llmBadge.style.display = 'inline';
+    if (d.llm_used) {
+      llmBadge.textContent      = 'GROQ';
+      llmBadge.style.color      = 'var(--green)';
+      llmBadge.style.borderColor = 'var(--green)';
+    } else {
+      llmBadge.textContent      = 'FALLBACK';
+      llmBadge.style.color      = 'var(--yellow)';
+      llmBadge.style.borderColor = 'var(--yellow)';
+    }
+  } else {
+    llmText.textContent    = '—';
+    llmBadge.style.display = 'none';
+  }
+
   // Status bar
   $('last-upd').textContent = 'LAST UPDATE: ' + new Date().toLocaleTimeString();
 }
@@ -719,6 +757,17 @@ setInterval(() => {
   $('cd').textContent = countdown;
   if (countdown === 0) fetchData();
 }, 1000);
+
+// ── Live clock ────────────────────────────────────────────────
+(function tickClock() {
+  const now    = new Date();
+  const local  = now.toLocaleTimeString('en-GB', {hour12: false});
+  const utc    = now.toLocaleTimeString('en-GB', {timeZone: 'UTC', hour12: false});
+  const tzAbbr = new Intl.DateTimeFormat('en', {timeZoneName: 'short'})
+    .formatToParts(now).find(p => p.type === 'timeZoneName')?.value ?? '';
+  $('hdr-clock').textContent = local + ' ' + tzAbbr + ' | UTC ' + utc;
+  setTimeout(tickClock, 1000);
+})();
 
 fetchData();
 </script>

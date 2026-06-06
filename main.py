@@ -28,6 +28,7 @@ from layers.analysis.indicators import (
     normalize_rsi,
 )
 from layers.analysis.regime import detect_regime
+from layers.data.crypto_news import get_crypto_news
 from layers.data.macro import get_macro_signal
 from layers.data.news_sentiment import get_news_sentiment
 from layers.data.fear_greed import get_fear_greed
@@ -112,6 +113,9 @@ def build_state(
     regime: dict | None = None,
     llm_reasoning: str = "",
     llm_used: bool = False,
+    news_sources_count: int = 0,
+    top_headline: str = "",
+    top_headline_source: str = "",
 ) -> dict:
     upnl = 0.0
     if risk.position and price:
@@ -149,6 +153,9 @@ def build_state(
         "signal_score":         signal_score,
         "llm_reasoning":        llm_reasoning,
         "llm_used":             llm_used,
+        "news_sources_count":   news_sources_count,
+        "top_headline":         top_headline,
+        "top_headline_source":  top_headline_source,
         "portfolio_value":      risk.portfolio_value(price),
         "initial_capital":      risk.initial_capital,
         "realized_pnl":         risk.realized_pnl,
@@ -284,6 +291,13 @@ def run():
             # ── 4. Macro BTC signals (2-min cache) ────────────────────────
             macro = get_macro_signal()
 
+            # ── 4a. Multi-source crypto news (15-min cache) ───────────────
+            crypto_news = get_crypto_news()
+            top_hl      = crypto_news["top_headlines"][0] if crypto_news.get("top_headlines") else {}
+            top_headline = top_hl.get("title", "")
+            if top_headline:
+                print(f"  TopNews : [{top_hl.get('source','')}] {top_headline[:70]}")
+
             # ── 4b. Trump / geopolitical RSS (5-min cache) ────────────────
             trump = get_trump_signal()
             cached_tag_t = " (cached)" if trump.get("cached") else f" [{trump.get('post_count', 0)} post(s)]"
@@ -349,6 +363,7 @@ def run():
                 price=price,
                 regime=regime_info.get("regime", "unknown"),
                 recent_trades=get_recent_trades(5),
+                top_headline=top_headline,
             )
             print(f"  Signal  : {sig.action} ({sig.score:.3f}) | {sig.reason}")
 
@@ -367,6 +382,7 @@ def run():
                     fear_greed=fear_greed.get("normalized"),
                     regime=regime_info["regime"],
                     price=price,
+                    llm_reasoning=sig.reasoning,
                 )
             except Exception:
                 pass
@@ -507,6 +523,9 @@ def run():
                 regime=regime_info,
                 llm_reasoning=sig.reasoning,
                 llm_used=sig.llm_used,
+                news_sources_count=crypto_news.get("sources_count", 0),
+                top_headline=top_headline,
+                top_headline_source=top_hl.get("source", ""),
             ))
 
             # ── 11. Hourly PnL report ─────────────────────────────────────

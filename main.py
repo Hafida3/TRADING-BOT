@@ -42,6 +42,7 @@ from layers.risk.risk_manager import RiskManager
 
 DATA_JSON = Path(__file__).parent / "data.json"
 SELL_LOG  = Path(__file__).parent / "sell_signals.csv"
+SOUL_FILE = Path(__file__).parent / "soul.md"
 MAX_PRICE_HISTORY = 200
 
 _SELL_LOG_FIELDS = [
@@ -109,6 +110,8 @@ def build_state(
     risk: RiskManager,
     iteration: int,
     regime: dict | None = None,
+    llm_reasoning: str = "",
+    llm_used: bool = False,
 ) -> dict:
     upnl = 0.0
     if risk.position and price:
@@ -144,6 +147,8 @@ def build_state(
         "regime_atr":           (regime or {}).get("atr"),
         "signal":               signal_action,
         "signal_score":         signal_score,
+        "llm_reasoning":        llm_reasoning,
+        "llm_used":             llm_used,
         "portfolio_value":      risk.portfolio_value(price),
         "initial_capital":      risk.initial_capital,
         "realized_pnl":         risk.realized_pnl,
@@ -200,6 +205,16 @@ def run():
     print(f"  Capital  : ${config.INITIAL_CAPITAL_USDC:.2f} USDC")
     print(f"  Buy ≥    : {config.BUY_THRESHOLD}  |  Sell ≤ : {config.SELL_THRESHOLD}")
     print(f"{'═'*60}\n")
+
+    # Load agent soul
+    if SOUL_FILE.exists():
+        soul = SOUL_FILE.read_text(encoding="utf-8")
+        mission_line = next(
+            (l.strip() for l in soul.splitlines() if l.startswith("Protect")), ""
+        )
+        print(f"[Soul] Loaded — Mission: {mission_line}")
+    else:
+        print("[Soul] Warning: soul.md not found — agent running without identity")
 
     keypair  = setup_keypair()
     telegram = TelegramAlerter(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID)
@@ -331,6 +346,9 @@ def run():
                 fear_greed_score=fear_greed.get("normalized"),
                 fear_greed_raw=fear_greed.get("score"),
                 fear_greed_label=fear_greed.get("label", ""),
+                price=price,
+                regime=regime_info.get("regime", "unknown"),
+                recent_trades=get_recent_trades(5),
             )
             print(f"  Signal  : {sig.action} ({sig.score:.3f}) | {sig.reason}")
 
@@ -487,6 +505,8 @@ def run():
                 news, macro, trump, fear_greed, grid,
                 sig.action, sig.score, risk, iteration,
                 regime=regime_info,
+                llm_reasoning=sig.reasoning,
+                llm_used=sig.llm_used,
             ))
 
             # ── 11. Hourly PnL report ─────────────────────────────────────

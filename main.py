@@ -26,6 +26,9 @@ from layers.analysis.indicators import (
     calculate_rsi,
     normalize_macd,
     normalize_rsi,
+    calculate_ma_crossover,
+    calculate_stoch_rsi,
+    calculate_bollinger_bands,
 )
 from layers.analysis.regime import detect_regime
 from layers.data.crypto_news import get_crypto_news
@@ -33,7 +36,6 @@ from layers.data.macro import get_macro_signal
 from layers.data.news_sentiment import get_news_sentiment
 from layers.data.fear_greed import get_fear_greed
 from layers.data.polymarket import get_sol_sentiment
-from layers.data.trump_signal import get_trump_signal
 from layers.data.price_feed import get_sol_price, bootstrap_price_history
 from layers.decision.signal_engine import generate_signal
 from layers.execution.grid_bot import GridBot
@@ -213,7 +215,6 @@ def build_state(
     pm: float | None,
     news: dict | None,
     macro: dict | None,
-    trump: dict | None,
     fear_greed: dict | None,
     grid: "GridBot | None",
     signal_action: str,
@@ -226,6 +227,13 @@ def build_state(
     news_sources_count: int = 0,
     top_headline: str = "",
     top_headline_source: str = "",
+    ma_score: float | None = None,
+    stoch_score: float | None = None,
+    bb_score: float | None = None,
+    ma_fast: float | None = None,
+    ma_slow: float | None = None,
+    stoch_k: float | None = None,
+    stoch_d: float | None = None,
 ) -> dict:
     upnl = 0.0
     if risk.position and price:
@@ -249,9 +257,13 @@ def build_state(
         "macro_score":          macro.get("macro_score") if macro else None,
         "btc_24h_change_pct":   macro.get("btc_24h_change_pct") if macro else None,
         "btc_dominance_pct":    macro.get("btc_dominance_pct") if macro else None,
-        "trump_score":          trump.get("normalized") if trump else None,
-        "trump_reason":         trump.get("reason", "") if trump else "",
-        "trump_post_count":     trump.get("post_count", 0) if trump else 0,
+        "ma_score":             ma_score,
+        "stoch_score":          stoch_score,
+        "bb_score":             bb_score,
+        "ma_fast":              ma_fast,
+        "ma_slow":              ma_slow,
+        "stoch_k":              stoch_k,
+        "stoch_d":              stoch_d,
         "fear_greed_score":     fear_greed.get("score") if fear_greed else None,
         "fear_greed_normalized": fear_greed.get("normalized") if fear_greed else None,
         "fear_greed_label":     fear_greed.get("label", "") if fear_greed else "",
@@ -425,11 +437,6 @@ def run():
             if top_headline:
                 print(f"  TopNews : [{top_hl.get('source','')}] {top_headline[:70]}")
 
-            # ── 4b. Trump / geopolitical RSS (5-min cache) ────────────────
-            trump = get_trump_signal()
-            cached_tag_t = " (cached)" if trump.get("cached") else f" [{trump.get('post_count', 0)} post(s)]"
-            print(f"  Trump   : {trump['normalized']:.3f}{cached_tag_t} | '{trump['reason'][:40]}'")
-
             # ── 4c. Fear & Greed Index (30-min cache) ─────────────────────
             fear_greed = get_fear_greed()
             fg_tag = " (cached)" if fear_greed.get("cached") else ""
@@ -467,6 +474,16 @@ def run():
             hist_str = f"{hist:.4f}" if hist       is not None else "—"
             print(f"  RSI     : {rsi_str}  |  MACD: {macd_str}  |  hist: {hist_str}")
 
+            # ── 5b. Additional technical indicators ───────────────────────
+            ma_fast_val, ma_slow_val, ma_score_val = calculate_ma_crossover(price_history)
+            stoch_k_val, stoch_d_val, stoch_score_val = calculate_stoch_rsi(price_history)
+            bb_upper_val, _bb_mid, bb_lower_val, bb_score_val = calculate_bollinger_bands(price_history)
+
+            ma_str    = f"MA50={ma_fast_val:.2f}/MA200={ma_slow_val:.2f}" if ma_score_val is not None else "warming up"
+            stoch_str = f"{stoch_k_val:.1f}" if stoch_k_val is not None else "—"
+            bb_str    = f"{bb_score_val:.3f}" if bb_score_val is not None else "—"
+            print(f"  MA/Stch : {ma_str}  StochK={stoch_str}  BB={bb_str}")
+
             # ── 5b. Regime detection (observation only) ───────────────────
             regime_info = detect_regime(price_history)
             r = regime_info["regime"]
@@ -479,11 +496,18 @@ def run():
             sig = generate_signal(
                 rsi_score, macd_score, pm_sentiment,
                 news.get("normalized"), macro.get("macro_score"),
+                ma_score=ma_score_val,
+                stoch_score=stoch_score_val,
+                bb_score=bb_score_val,
                 rsi_raw=rsi, macd_raw=macd_line,
                 macd_signal_raw=sig_line, macd_hist_raw=hist,
                 news_reason=news.get("reason", ""),
-                trump_score=trump.get("normalized"),
-                trump_reason=trump.get("reason", ""),
+                ma_fast=ma_fast_val,
+                ma_slow=ma_slow_val,
+                stoch_k=stoch_k_val,
+                stoch_d=stoch_d_val,
+                bb_upper=bb_upper_val,
+                bb_lower=bb_lower_val,
                 fear_greed_score=fear_greed.get("normalized"),
                 fear_greed_raw=fear_greed.get("score"),
                 fear_greed_label=fear_greed.get("label", ""),
@@ -506,11 +530,13 @@ def run():
                     polymarket=pm_sentiment,
                     news=news.get("normalized"),
                     macro=macro.get("macro_score"),
-                    trump=trump.get("normalized"),
                     fear_greed=fear_greed.get("normalized"),
                     regime=regime_info["regime"],
                     price=price,
                     llm_reasoning=sig.reasoning,
+                    ma_score=ma_score_val,
+                    stoch_score=stoch_score_val,
+                    bb_score=bb_score_val,
                 )
             except Exception:
                 pass
@@ -658,7 +684,7 @@ def run():
             # ── 10. Dashboard data ────────────────────────────────────────
             write_state(build_state(
                 price, rsi, macd_line, hist, pm_sentiment,
-                news, macro, trump, fear_greed, grid,
+                news, macro, fear_greed, grid,
                 sig.action, sig.score, risk, iteration,
                 regime=regime_info,
                 llm_reasoning=sig.reasoning,
@@ -666,6 +692,13 @@ def run():
                 news_sources_count=crypto_news.get("sources_count", 0),
                 top_headline=top_headline,
                 top_headline_source=top_hl.get("source", ""),
+                ma_score=ma_score_val,
+                stoch_score=stoch_score_val,
+                bb_score=bb_score_val,
+                ma_fast=ma_fast_val,
+                ma_slow=ma_slow_val,
+                stoch_k=stoch_k_val,
+                stoch_d=stoch_d_val,
             ))
 
             # ── 11. Hourly PnL report ─────────────────────────────────────

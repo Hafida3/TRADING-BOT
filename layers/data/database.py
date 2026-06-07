@@ -22,6 +22,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     existing = {row[1] for row in conn.execute("PRAGMA table_info(signal_history)")}
     if "llm_reasoning" not in existing:
         conn.execute("ALTER TABLE signal_history ADD COLUMN llm_reasoning TEXT")
+    if "ma_score" not in existing:
+        conn.execute("ALTER TABLE signal_history ADD COLUMN ma_score REAL")
+    if "stoch_score" not in existing:
+        conn.execute("ALTER TABLE signal_history ADD COLUMN stoch_score REAL")
+    if "bb_score" not in existing:
+        conn.execute("ALTER TABLE signal_history ADD COLUMN bb_score REAL")
 
 
 def init_db() -> None:
@@ -110,20 +116,24 @@ def save_signal(
     polymarket: Optional[float],
     news: Optional[float],
     macro: Optional[float],
-    trump: Optional[float],
     fear_greed: Optional[float],
     regime: Optional[str],
     price: Optional[float],
     llm_reasoning: Optional[str] = None,
+    ma_score: Optional[float] = None,
+    stoch_score: Optional[float] = None,
+    bb_score: Optional[float] = None,
 ) -> None:
     with _connect() as conn:
         conn.execute(
             """INSERT INTO signal_history
                (timestamp, signal, score, rsi, macd, polymarket, news, macro,
-                trump, fear_greed, regime, price, llm_reasoning)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                trump, fear_greed, regime, price, llm_reasoning,
+                ma_score, stoch_score, bb_score)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (timestamp, signal, score, rsi, macd, polymarket, news, macro,
-             trump, fear_greed, regime, price, llm_reasoning),
+             None, fear_greed, regime, price, llm_reasoning,
+             ma_score, stoch_score, bb_score),
         )
 
 

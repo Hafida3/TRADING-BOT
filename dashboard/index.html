@@ -196,7 +196,7 @@ html, body {
 /* ── Signal bars row ────────────────────────────────────── */
 #sigs-row {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(9, 1fr);
   gap: 6px;
   flex-shrink: 0;
 }
@@ -341,28 +341,49 @@ html, body {
   <div id="sigs-row">
 
     <div class="panel sig-card">
-      <div class="sig-hdr"><span class="sig-name">RSI</span><span class="sig-wt">×20%</span></div>
+      <div class="sig-hdr"><span class="sig-name">RSI</span><span class="sig-wt">×15%</span></div>
       <div class="sig-num" id="rsi-num">—</div>
       <div class="btrack"><div class="bfill g" id="rsi-bar" style="width:0%"></div></div>
       <div class="sig-sub" id="rsi-sub"></div>
     </div>
 
     <div class="panel sig-card">
-      <div class="sig-hdr"><span class="sig-name">MACD HIST</span><span class="sig-wt">×20%</span></div>
+      <div class="sig-hdr"><span class="sig-name">MACD HIST</span><span class="sig-wt">×15%</span></div>
       <div class="sig-num" id="macd-num">—</div>
       <div class="btrack"><div class="bfill g" id="macd-bar" style="width:0%"></div></div>
       <div class="sig-sub" id="macd-sub"></div>
     </div>
 
     <div class="panel sig-card">
-      <div class="sig-hdr"><span class="sig-name">POLYMARKET</span><span class="sig-wt">×10%</span></div>
+      <div class="sig-hdr"><span class="sig-name">MA CROSS</span><span class="sig-wt">×13%</span></div>
+      <div class="sig-num" id="ma-num">—</div>
+      <div class="btrack"><div class="bfill g" id="ma-bar" style="width:0%"></div></div>
+      <div class="sig-sub" id="ma-sub"></div>
+    </div>
+
+    <div class="panel sig-card">
+      <div class="sig-hdr"><span class="sig-name">STOCH RSI</span><span class="sig-wt">×10%</span></div>
+      <div class="sig-num" id="stoch-num">—</div>
+      <div class="btrack"><div class="bfill g" id="stoch-bar" style="width:0%"></div></div>
+      <div class="sig-sub" id="stoch-sub"></div>
+    </div>
+
+    <div class="panel sig-card">
+      <div class="sig-hdr"><span class="sig-name">BOLL BANDS</span><span class="sig-wt">×10%</span></div>
+      <div class="sig-num" id="bb-num">—</div>
+      <div class="btrack"><div class="bfill g" id="bb-bar" style="width:0%"></div></div>
+      <div class="sig-sub" id="bb-sub"></div>
+    </div>
+
+    <div class="panel sig-card">
+      <div class="sig-hdr"><span class="sig-name">POLYMARKET</span><span class="sig-wt">×7%</span></div>
       <div class="sig-num" id="poly-num">—</div>
       <div class="btrack"><div class="bfill g" id="poly-bar" style="width:0%"></div></div>
       <div class="sig-sub" id="poly-sub"></div>
     </div>
 
     <div class="panel sig-card">
-      <div class="sig-hdr"><span class="sig-name">NEWS NLP</span><span class="sig-wt">×25%</span></div>
+      <div class="sig-hdr"><span class="sig-name">NEWS NLP</span><span class="sig-wt">×20%</span></div>
       <div class="sig-num" id="news-num">—</div>
       <div class="btrack"><div class="bfill g" id="news-bar" style="width:0%"></div></div>
       <div class="sig-sub" id="news-sub"></div>
@@ -370,21 +391,14 @@ html, body {
     </div>
 
     <div class="panel sig-card">
-      <div class="sig-hdr"><span class="sig-name">MACRO BTC</span><span class="sig-wt">×15%</span></div>
+      <div class="sig-hdr"><span class="sig-name">MACRO BTC</span><span class="sig-wt">×5%</span></div>
       <div class="sig-num" id="macro-num">—</div>
       <div class="btrack"><div class="bfill g" id="macro-bar" style="width:0%"></div></div>
       <div class="sig-sub" id="macro-sub"></div>
     </div>
 
     <div class="panel sig-card">
-      <div class="sig-hdr"><span class="sig-name">TRUMP/GEO</span><span class="sig-wt">×10%</span></div>
-      <div class="sig-num" id="trump-num">—</div>
-      <div class="btrack"><div class="bfill g" id="trump-bar" style="width:0%"></div></div>
-      <div class="sig-sub" id="trump-sub"></div>
-    </div>
-
-    <div class="panel sig-card">
-      <div class="sig-hdr"><span class="sig-name">FEAR/GREED</span><span class="sig-wt">×10%</span></div>
+      <div class="sig-hdr"><span class="sig-name">FEAR/GREED</span><span class="sig-wt">×5%</span></div>
       <div class="sig-num" id="fg-num">—</div>
       <div class="btrack"><div class="bfill g" id="fg-bar" style="width:0%"></div></div>
       <div class="sig-sub" id="fg-sub"></div>
@@ -617,28 +631,49 @@ function render(d) {
   setBar('macro-bar', mac);
   $('macro-sub').textContent = 'BTC ' + (btcC >= 0 ? '+' : '') + f2(btcC) + '%';
 
-  // Trump/Geo ×10%
-  const trumpN = d.trump_score;
-  if (trumpN != null) {
-    $('trump-num').textContent = f3(trumpN);
-    if ((d.trump_post_count ?? 0) === 0) {
-      const tb = $('trump-bar');
-      tb.style.width = '50%';
-      tb.className   = 'bfill y';
-      $('trump-sub').textContent = 'NO POSTS';
-    } else {
-      setBar('trump-bar', trumpN);
-      $('trump-sub').textContent = (d.trump_reason ?? '').toUpperCase().slice(0, 16);
-    }
+  // MA Crossover ×13%
+  const maScore = d.ma_score;
+  if (maScore != null) {
+    $('ma-num').textContent = f3(maScore);
+    setBar('ma-bar', maScore);
+    const maFast = d.ma_fast, maSlow = d.ma_slow;
+    $('ma-sub').textContent = maFast && maSlow
+      ? (maFast > maSlow ? 'BULL CROSS ▲' : 'BEAR CROSS ▼')
+      : '—';
   } else {
-    $('trump-num').textContent = '—';
-    const tb = $('trump-bar');
-    tb.style.width = '0%';
-    tb.className   = 'bfill y';
-    $('trump-sub').textContent = 'OFFLINE';
+    $('ma-num').textContent = '—';
+    const mb = $('ma-bar'); mb.style.width = '0%'; mb.className = 'bfill y';
+    $('ma-sub').textContent = 'WARMING UP';
   }
 
-  // Fear & Greed ×10%
+  // Stoch RSI ×10%
+  const stochScore = d.stoch_score;
+  const stochK     = d.stoch_k;
+  if (stochScore != null) {
+    $('stoch-num').textContent = stochK != null ? f2(stochK) : f3(stochScore);
+    setBar('stoch-bar', stochScore);
+    $('stoch-sub').textContent = stochK != null
+      ? (stochK <= 20 ? 'OVERSOLD ▲' : stochK >= 80 ? 'OVERBOUGHT ▼' : 'NEUTRAL')
+      : 'NEUTRAL';
+  } else {
+    $('stoch-num').textContent = '—';
+    const sb = $('stoch-bar'); sb.style.width = '0%'; sb.className = 'bfill y';
+    $('stoch-sub').textContent = 'WARMING UP';
+  }
+
+  // Bollinger Bands ×10%
+  const bbScore = d.bb_score;
+  if (bbScore != null) {
+    $('bb-num').textContent = f3(bbScore);
+    setBar('bb-bar', bbScore);
+    $('bb-sub').textContent = bbScore > 0.7 ? 'NEAR LOWER ▲' : bbScore < 0.3 ? 'NEAR UPPER ▼' : 'MID BAND';
+  } else {
+    $('bb-num').textContent = '—';
+    const bbb = $('bb-bar'); bbb.style.width = '0%'; bbb.className = 'bfill y';
+    $('bb-sub').textContent = 'WARMING UP';
+  }
+
+  // Fear & Greed ×5%
   const fg    = d.fear_greed_score;   // raw 0-100
   const fgN   = d.fear_greed_normalized;
   const fgLbl = d.fear_greed_label ?? '';

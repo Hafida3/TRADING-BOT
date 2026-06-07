@@ -7,13 +7,15 @@ Priority:
   3. Weighted composite score              — final offline fallback
 
 Signal weights (normalised proportionally when a source is absent):
-  News NLP    25%
-  MACD        13%
-  RSI         12%
-  Polymarket  10%
-  Macro BTC   10%
-  Trump/Geo   10%
-  Fear&Greed  10%
+  News NLP    20%
+  RSI         15%
+  MACD        15%
+  MA Cross    13%
+  Stoch RSI   10%
+  Bollinger   10%
+  Polymarket   7%
+  Macro BTC    5%
+  Fear&Greed   5%
 """
 
 import json
@@ -26,16 +28,18 @@ import requests
 import config
 
 _WEIGHTS: dict[str, float] = {
-    "news":       0.25,
-    "macd":       0.13,
-    "rsi":        0.12,
-    "polymarket": 0.10,
-    "macro":      0.10,
-    "trump":      0.10,
-    "fear_greed": 0.10,
+    "news":       0.20,
+    "rsi":        0.15,
+    "macd":       0.15,
+    "ma":         0.13,
+    "stoch":      0.10,
+    "bb":         0.10,
+    "polymarket": 0.07,
+    "macro":      0.05,
+    "fear_greed": 0.05,
 }
 
-_GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
+_GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 @dataclass
@@ -50,8 +54,9 @@ class Signal:
     news_score:           Optional[float]
     news_reason:          str
     macro_score:          Optional[float]
-    trump_score:          Optional[float]
-    trump_reason:         str
+    ma_score:             Optional[float]
+    stoch_score:          Optional[float]
+    bb_score:             Optional[float]
     fear_greed_score:     Optional[int]
     fear_greed_label:     str
     reason:               str            # compact score breakdown for logs
@@ -64,7 +69,7 @@ class Signal:
 
 def _composite(
     rsi_score, macd_score, polymarket_score,
-    news_score, macro_score, trump_score, fear_greed_score,
+    news_score, macro_score, ma_score, stoch_score, bb_score, fear_greed_score,
 ) -> tuple[float, dict[str, float]]:
     source_map = {
         "rsi":        rsi_score,
@@ -72,7 +77,9 @@ def _composite(
         "polymarket": polymarket_score,
         "news":       news_score,
         "macro":      macro_score,
-        "trump":      trump_score,
+        "ma":         ma_score,
+        "stoch":      stoch_score,
+        "bb":         bb_score,
         "fear_greed": fear_greed_score,
     }
     active = {k: v for k, v in source_map.items() if v is not None}
@@ -101,6 +108,10 @@ def _call_claude(
     polymarket_score: Optional[float],
     news_score:       Optional[float],
     macro_score:      Optional[float],
+    ma_fast:          Optional[float],
+    ma_slow:          Optional[float],
+    stoch_k:          Optional[float],
+    bb_score:         Optional[float],
     fear_greed_raw:   Optional[int],
     fear_greed_label: str,
     regime:           str,
@@ -115,7 +126,8 @@ def _call_claude(
     def fmt(v, d=3):
         return f"{v:.{d}f}" if v is not None else "N/A"
 
-    zone = _zone(composite_score)
+    zone     = _zone(composite_score)
+    ma_trend = "bull" if ma_fast and ma_slow and ma_fast > ma_slow else "bear"
     memory_ctx = (
         f"\n\nYour past trade lessons:\n{agent_memory[-800:]}"
         if agent_memory else ""
@@ -124,6 +136,8 @@ def _call_claude(
         f"You are an autonomous crypto trading agent. "
         f"Given these market signals: "
         f"RSI={fmt(rsi_raw,1)}, MACD={fmt(macd_hist_raw,4)}, "
+        f"MA50/200={fmt(ma_fast,2)}/{fmt(ma_slow,2)} ({ma_trend}), "
+        f"StochK={fmt(stoch_k,1)}, BB={fmt(bb_score)}, "
         f"Polymarket={fmt(polymarket_score)}, "
         f"News={fmt(news_score)} ({top_headline or 'no headline'}), "
         f"Macro={fmt(macro_score)}, Fear&Greed={fear_greed_raw}/100 ({fear_greed_label}), "
@@ -166,8 +180,11 @@ def _call_groq(
     news_score:            Optional[float],
     news_reason:           str,
     macro_score:           Optional[float],
-    trump_score:           Optional[float],
-    trump_reason:          str,
+    ma_fast:               Optional[float],
+    ma_slow:               Optional[float],
+    stoch_k:               Optional[float],
+    stoch_d:               Optional[float],
+    bb_score:              Optional[float],
     fear_greed_raw:        Optional[int],
     fear_greed_normalized: Optional[float],
     fear_greed_label:      str,
@@ -200,13 +217,14 @@ def _call_groq(
     zone         = _zone(composite_score)
     headline_ctx = f" Top headline: {top_headline}" if top_headline else ""
     memory_ctx   = f"\n\nPast trade lessons:\n{agent_memory[-600:]}" if agent_memory else ""
+    ma_trend     = "bull" if ma_fast and ma_slow and ma_fast > ma_slow else "bear"
     user_content = f"""Analyze SOL/USDC signals and decide BUY, SELL, or HOLD.
 
 SOL Price: ${price:.4f}
 RSI(14): {fmt(rsi_raw,1)} | MACD Hist: {fmt(macd_hist_raw,4)}
+MA50: {fmt(ma_fast,2)} / MA200: {fmt(ma_slow,2)} ({ma_trend}) | StochK: {fmt(stoch_k,1)} D: {fmt(stoch_d,1)} | BB: {fmt(bb_score)}
 Polymarket: {fmt(polymarket_score)} | News: {fmt(news_score)}{headline_ctx}
-Macro BTC: {fmt(macro_score)} | Trump: {fmt(trump_score)} ({trump_reason or 'no posts'})
-Fear&Greed: {fear_greed_raw}/100 ({fear_greed_label}) → contrarian={fmt(fear_greed_normalized)}
+Macro BTC: {fmt(macro_score)} | Fear&Greed: {fear_greed_raw}/100 ({fear_greed_label}) → contrarian={fmt(fear_greed_normalized)}
 Regime: {regime} | Composite: {composite_score:.3f} [BUY≥{config.BUY_THRESHOLD}/SELL≤{config.SELL_THRESHOLD}]
 
 Composite score: {composite_score:.3f} (BUY threshold: {config.BUY_THRESHOLD}, SELL threshold: {config.SELL_THRESHOLD})
@@ -274,13 +292,20 @@ def generate_signal(
     news_score:       Optional[float],
     macro_score:      Optional[float],
     *,
+    ma_score:         Optional[float] = None,
+    stoch_score:      Optional[float] = None,
+    bb_score:         Optional[float] = None,
     rsi_raw:          Optional[float] = None,
     macd_raw:         Optional[float] = None,
     macd_signal_raw:  Optional[float] = None,
     macd_hist_raw:    Optional[float] = None,
     news_reason:      str = "",
-    trump_score:      Optional[float] = None,
-    trump_reason:     str = "",
+    ma_fast:          Optional[float] = None,
+    ma_slow:          Optional[float] = None,
+    stoch_k:          Optional[float] = None,
+    stoch_d:          Optional[float] = None,
+    bb_upper:         Optional[float] = None,
+    bb_lower:         Optional[float] = None,
     fear_greed_score: Optional[float] = None,
     fear_greed_raw:   Optional[int]   = None,
     fear_greed_label: str = "",
@@ -294,18 +319,20 @@ def generate_signal(
     # Step 1: composite (always — needed for display bars + fallback)
     composite, eff_weights = _composite(
         rsi_score, macd_score, polymarket_score,
-        news_score, macro_score, trump_score, fear_greed_score,
+        news_score, macro_score, ma_score, stoch_score, bb_score, fear_greed_score,
     )
 
     # Step 2: compact score reason for logs
     parts: list[str] = []
-    if rsi_raw         is not None: parts.append(f"RSI={rsi_raw:.1f}")
-    if macd_hist_raw   is not None:
+    if rsi_raw          is not None: parts.append(f"RSI={rsi_raw:.1f}")
+    if macd_hist_raw    is not None:
         parts.append(f"hist={macd_hist_raw:.3f}{'▲' if macd_hist_raw > 0 else '▼'}")
+    if ma_score         is not None: parts.append(f"ma={ma_score:.2f}")
+    if stoch_score      is not None: parts.append(f"stoch={stoch_score:.2f}")
+    if bb_score         is not None: parts.append(f"bb={bb_score:.2f}")
     if polymarket_score is not None: parts.append(f"PM={polymarket_score:.2f}")
     if news_score       is not None: parts.append(f"news={news_score:.2f}")
     if macro_score      is not None: parts.append(f"macro={macro_score:.2f}")
-    if trump_score      is not None: parts.append(f"trump={trump_score:.2f}")
     if fear_greed_score is not None: parts.append(f"fg={fear_greed_score:.2f}")
     parts.append(f"→{composite:.3f}")
     score_reason = " | ".join(parts)
@@ -324,19 +351,18 @@ def generate_signal(
             rsi_raw=rsi_raw, macd_raw=macd_raw, macd_signal_raw=macd_signal_raw,
             macd_hist_raw=macd_hist_raw, polymarket_sentiment=polymarket_score,
             news_score=news_score, news_reason=news_reason, macro_score=macro_score,
-            trump_score=trump_score, trump_reason=trump_reason,
+            ma_score=ma_score, stoch_score=stoch_score, bb_score=bb_score,
             fear_greed_score=fear_greed_raw, fear_greed_label=fear_greed_label,
             reason="No data yet", reasoning="No signal data available.",
         )
 
     if price is None:
-        # Can't call any LLM without price context
         return Signal(
             action=fallback_action, score=composite,
             rsi_raw=rsi_raw, macd_raw=macd_raw, macd_signal_raw=macd_signal_raw,
             macd_hist_raw=macd_hist_raw, polymarket_sentiment=polymarket_score,
             news_score=news_score, news_reason=news_reason, macro_score=macro_score,
-            trump_score=trump_score, trump_reason=trump_reason,
+            ma_score=ma_score, stoch_score=stoch_score, bb_score=bb_score,
             fear_greed_score=fear_greed_raw, fear_greed_label=fear_greed_label,
             reason=score_reason,
             reasoning=f"Score-based: composite={composite:.3f}, regime={regime}.",
@@ -351,6 +377,10 @@ def generate_signal(
         polymarket_score=polymarket_score,
         news_score=news_score,
         macro_score=macro_score,
+        ma_fast=ma_fast,
+        ma_slow=ma_slow,
+        stoch_k=stoch_k,
+        bb_score=bb_score,
         fear_greed_raw=fear_greed_raw,
         fear_greed_label=fear_greed_label,
         regime=regime,
@@ -367,7 +397,7 @@ def generate_signal(
             rsi_raw=rsi_raw, macd_raw=macd_raw, macd_signal_raw=macd_signal_raw,
             macd_hist_raw=macd_hist_raw, polymarket_sentiment=polymarket_score,
             news_score=news_score, news_reason=news_reason, macro_score=macro_score,
-            trump_score=trump_score, trump_reason=trump_reason,
+            ma_score=ma_score, stoch_score=stoch_score, bb_score=bb_score,
             fear_greed_score=fear_greed_raw, fear_greed_label=fear_greed_label,
             reason=score_reason, reasoning=reasoning,
             llm_used=True, weights_used=eff_weights,
@@ -382,8 +412,11 @@ def generate_signal(
         news_score=news_score,
         news_reason=news_reason,
         macro_score=macro_score,
-        trump_score=trump_score,
-        trump_reason=trump_reason,
+        ma_fast=ma_fast,
+        ma_slow=ma_slow,
+        stoch_k=stoch_k,
+        stoch_d=stoch_d,
+        bb_score=bb_score,
         fear_greed_raw=fear_greed_raw,
         fear_greed_normalized=fear_greed_score,
         fear_greed_label=fear_greed_label,
@@ -402,7 +435,7 @@ def generate_signal(
             rsi_raw=rsi_raw, macd_raw=macd_raw, macd_signal_raw=macd_signal_raw,
             macd_hist_raw=macd_hist_raw, polymarket_sentiment=polymarket_score,
             news_score=news_score, news_reason=news_reason, macro_score=macro_score,
-            trump_score=trump_score, trump_reason=trump_reason,
+            ma_score=ma_score, stoch_score=stoch_score, bb_score=bb_score,
             fear_greed_score=fear_greed_raw, fear_greed_label=fear_greed_label,
             reason=score_reason, reasoning=reasoning,
             llm_used=True, weights_used=eff_weights,
@@ -415,7 +448,7 @@ def generate_signal(
         rsi_raw=rsi_raw, macd_raw=macd_raw, macd_signal_raw=macd_signal_raw,
         macd_hist_raw=macd_hist_raw, polymarket_sentiment=polymarket_score,
         news_score=news_score, news_reason=news_reason, macro_score=macro_score,
-        trump_score=trump_score, trump_reason=trump_reason,
+        ma_score=ma_score, stoch_score=stoch_score, bb_score=bb_score,
         fear_greed_score=fear_greed_raw, fear_greed_label=fear_greed_label,
         reason=score_reason,
         reasoning=f"LLMs unavailable — composite={composite:.3f}, regime={regime}.",

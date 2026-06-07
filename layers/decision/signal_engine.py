@@ -86,18 +86,27 @@ def _composite(
 
 # ── Claude (primary) ──────────────────────────────────────────────────────────
 
+def _zone(score: float) -> str:
+    if score < config.SELL_THRESHOLD:
+        return "SELL ZONE"
+    if score > config.BUY_THRESHOLD:
+        return "BUY ZONE"
+    return "NEUTRAL ZONE"
+
+
 def _call_claude(
-    price:           float,
-    rsi_raw:         Optional[float],
-    macd_hist_raw:   Optional[float],
+    price:            float,
+    rsi_raw:          Optional[float],
+    macd_hist_raw:    Optional[float],
     polymarket_score: Optional[float],
-    news_score:      Optional[float],
-    macro_score:     Optional[float],
-    fear_greed_raw:  Optional[int],
+    news_score:       Optional[float],
+    macro_score:      Optional[float],
+    fear_greed_raw:   Optional[int],
     fear_greed_label: str,
-    regime:          str,
-    top_headline:    str,
-    agent_memory:    str = "",
+    regime:           str,
+    top_headline:     str,
+    composite_score:  float = 0.5,
+    agent_memory:     str = "",
 ) -> tuple[str, str] | None:
     """Call claude-haiku-4-5. Returns (action, reasoning) or None."""
     if not config.ANTHROPIC_API_KEY:
@@ -106,6 +115,7 @@ def _call_claude(
     def fmt(v, d=3):
         return f"{v:.{d}f}" if v is not None else "N/A"
 
+    zone = _zone(composite_score)
     memory_ctx = (
         f"\n\nYour past trade lessons:\n{agent_memory[-800:]}"
         if agent_memory else ""
@@ -119,7 +129,13 @@ def _call_claude(
         f"Macro={fmt(macro_score)}, Fear&Greed={fear_greed_raw}/100 ({fear_greed_label}), "
         f"Regime={regime}. "
         f"Your soul: protect capital, generate asymmetric gains."
-        f"{memory_ctx} "
+        f"{memory_ctx}\n\n"
+        f"Composite score: {composite_score:.3f} "
+        f"(BUY threshold: {config.BUY_THRESHOLD}, SELL threshold: {config.SELL_THRESHOLD})\n"
+        f"Current signal zone: {zone}\n"
+        f"Note: if you return HOLD while score is in SELL ZONE, no short position will open.\n"
+        f"Be decisive — HOLD is only appropriate in the NEUTRAL ZONE "
+        f"({config.SELL_THRESHOLD}–{config.BUY_THRESHOLD}).\n"
         f"Decide: BUY / SELL / HOLD and explain why in one sentence."
     )
 
@@ -181,6 +197,7 @@ def _call_groq(
             )
         trades_text = "\n".join(lines)
 
+    zone         = _zone(composite_score)
     headline_ctx = f" Top headline: {top_headline}" if top_headline else ""
     memory_ctx   = f"\n\nPast trade lessons:\n{agent_memory[-600:]}" if agent_memory else ""
     user_content = f"""Analyze SOL/USDC signals and decide BUY, SELL, or HOLD.
@@ -191,6 +208,11 @@ Polymarket: {fmt(polymarket_score)} | News: {fmt(news_score)}{headline_ctx}
 Macro BTC: {fmt(macro_score)} | Trump: {fmt(trump_score)} ({trump_reason or 'no posts'})
 Fear&Greed: {fear_greed_raw}/100 ({fear_greed_label}) → contrarian={fmt(fear_greed_normalized)}
 Regime: {regime} | Composite: {composite_score:.3f} [BUY≥{config.BUY_THRESHOLD}/SELL≤{config.SELL_THRESHOLD}]
+
+Composite score: {composite_score:.3f} (BUY threshold: {config.BUY_THRESHOLD}, SELL threshold: {config.SELL_THRESHOLD})
+Current signal zone: {zone}
+Note: if you return HOLD while score is in SELL ZONE, no short position will open.
+Be decisive — HOLD is only appropriate in the NEUTRAL ZONE ({config.SELL_THRESHOLD}–{config.BUY_THRESHOLD}).
 
 Recent trades:
 {trades_text}
@@ -333,6 +355,7 @@ def generate_signal(
         fear_greed_label=fear_greed_label,
         regime=regime,
         top_headline=top_headline,
+        composite_score=composite,
         agent_memory=agent_memory,
     )
 

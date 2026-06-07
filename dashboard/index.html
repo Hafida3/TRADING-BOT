@@ -266,7 +266,7 @@ html, body {
 
 /* ── PnL chart panel ────────────────────────────────────── */
 #pnl-panel { flex-shrink: 0; }
-#pnlChart  { display: block; width: 100% !important; height: 180px !important; }
+#pnlChart  { display: block; width: 100% !important; height: 220px !important; }
 
 /* Utility */
 .pos   { color: var(--green)              !important; }
@@ -291,6 +291,7 @@ html, body {
     <div id="hdr-title">◈ SOL<em>/</em>USDC &nbsp; MATRIX TRADER</div>
     <div id="hdr-meta">
       <span id="hdr-mode" class="chip dry">DRY RUN</span>
+      <span id="hdr-pnl" class="chip" style="font-size:14px;font-weight:bold;padding:2px 10px;letter-spacing:1.5px;">PNL —</span>
       <span>ITER: <span id="hdr-iter">—</span></span>
       <span id="hdr-clock" style="letter-spacing:1px;">—</span>
       <span id="hdr-ts">—</span>
@@ -521,6 +522,17 @@ function render(d) {
   const modeEl = $('hdr-mode');
   if (d.dry_run) { modeEl.textContent = 'DRY RUN'; modeEl.className = 'chip dry'; }
   else           { modeEl.textContent = '⚡ LIVE';  modeEl.className = 'chip live'; }
+
+  // PnL % badge in header
+  const pnlPctEl = $('hdr-pnl');
+  const initCap  = d.initial_capital ?? 50;
+  const rpnl     = d.realized_pnl ?? 0;
+  const pnlPct   = initCap > 0 ? (rpnl / initCap) * 100 : 0;
+  pnlPctEl.textContent  = 'PNL ' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%';
+  pnlPctEl.style.color       = pnlPct >= 0 ? 'var(--green)' : 'var(--red)';
+  pnlPctEl.style.borderColor = pnlPct >= 0 ? 'var(--green)' : 'var(--red)';
+  if (pnlPct >= 0) pnlPctEl.style.textShadow = '0 0 8px var(--green)';
+  else             pnlPctEl.style.textShadow = '0 0 8px var(--red)';
 
   // Price
   $('price-big').textContent = '$' + f2(d.price ?? 0);
@@ -768,84 +780,125 @@ function loadPnlChart() {
       }
 
       // Build cumulative PnL series
-      let cum = 0;
+      let cum = 0, runMax = 0, maxDd = 0;
       const labels = [];
       const data   = [];
       trades.forEach((t, i) => {
         cum += (t.pnl_usdc ?? 0);
+        const v = parseFloat(cum.toFixed(4));
         labels.push(i + 1);
-        data.push(parseFloat(cum.toFixed(4)));
+        data.push(v);
+        if (v > runMax) runMax = v;
+        const dd = runMax - v;
+        if (dd > maxDd) maxDd = dd;
       });
 
-      const finalPnl = data[data.length - 1] ?? 0;
-      const color    = finalPnl >= 0 ? '#00ff41' : '#ff0040';
-      const fillAbove = finalPnl >= 0 ? 'rgba(0,255,65,0.07)' : 'rgba(255,0,64,0.04)';
-      const fillBelow = 'rgba(255,0,64,0.07)';
+      const finalPnl  = data[data.length - 1] ?? 0;
+      const lineColor = finalPnl >= 0 ? '#00ff41' : '#ff0040';
+      const ddStr     = maxDd > 0.001 ? '-$' + maxDd.toFixed(2) : '$0.00';
 
       $('pnl-summary').innerHTML =
         'TRADES: <span style="color:var(--green)">' + trades.length + '</span>' +
         '&nbsp;|&nbsp;CUMULATIVE: <span class="' + (finalPnl >= 0 ? 'pos' : 'neg') + '">' +
-        (finalPnl >= 0 ? '+' : '') + '$' + Math.abs(finalPnl).toFixed(2) + '</span>';
+          (finalPnl >= 0 ? '+' : '') + '$' + Math.abs(finalPnl).toFixed(2) + '</span>' +
+        '&nbsp;|&nbsp;DRAWDOWN: <span style="color:' + (maxDd > 0.001 ? 'var(--red)' : 'var(--green-dim)') + '">' + ddStr + '</span>';
 
-      const cfg = {
+      // Destroy and recreate so dataset changes are clean
+      if (_pnlChart) { _pnlChart.destroy(); _pnlChart = null; }
+
+      _pnlChart = new Chart($('pnlChart'), {
         type: 'line',
         data: {
           labels,
-          datasets: [{
-            data,
-            borderColor:  color,
-            borderWidth:  1.5,
-            pointRadius:  0,
-            tension:      0.25,
-            fill: { target: 'origin', above: fillAbove, below: fillBelow },
-          }],
+          datasets: [
+            // Main PnL curve
+            {
+              data,
+              borderColor:      lineColor,
+              borderWidth:      1.5,
+              pointRadius:      0,
+              pointHoverRadius: 5,
+              pointHoverBackgroundColor: lineColor,
+              pointHoverBorderColor:     '#000',
+              pointHoverBorderWidth:     1,
+              tension: 0.25,
+              fill: {
+                target: 'origin',
+                above:  'rgba(0,255,65,0.15)',
+                below:  'rgba(255,0,64,0.15)',
+              },
+              order: 1,
+            },
+            // Zero reference line
+            {
+              data:        labels.map(() => 0),
+              borderColor: 'rgba(255,120,0,0.55)',
+              borderWidth: 1,
+              borderDash:  [5, 4],
+              pointRadius: 0,
+              fill:        false,
+              tension:     0,
+              order:       2,
+            },
+          ],
         },
         options: {
           responsive:          false,
           maintainAspectRatio: false,
           animation:           false,
+          interaction:         { mode: 'index', intersect: false },
           plugins: {
             legend: { display: false },
             tooltip: {
+              filter:    item => item.datasetIndex === 0,   // only main curve in tooltip
               callbacks: {
-                label: ctx => (ctx.parsed.y >= 0 ? '+' : '') + '$' + ctx.parsed.y.toFixed(2),
+                title: ctx  => 'Trade #' + ctx[0].label,
+                label: ctx  => (ctx.parsed.y >= 0 ? '+' : '') + '$' + ctx.parsed.y.toFixed(2),
               },
               backgroundColor: 'rgba(0,18,4,0.92)',
               borderColor:     'rgba(0,255,65,0.3)',
               borderWidth:     1,
-              titleColor:      'rgba(0,255,65,0.6)',
-              bodyColor:       color,
+              titleColor:      'rgba(0,255,65,0.55)',
+              bodyColor:       lineColor,
               titleFont:       { family: 'Courier New', size: 9 },
-              bodyFont:        { family: 'Courier New', size: 10 },
+              bodyFont:        { family: 'Courier New', size: 11, weight: 'bold' },
+              padding:         8,
             },
           },
           scales: {
             x: {
               ticks:  { color: 'rgba(0,255,65,0.35)', font: { size: 8, family: 'Courier New' }, maxTicksLimit: 10 },
-              grid:   { color: 'rgba(0,255,65,0.07)' },
+              grid:   { color: 'rgba(0,255,65,0.06)' },
               border: { color: 'rgba(0,255,65,0.18)' },
             },
             y: {
               ticks: {
-                color: 'rgba(0,255,65,0.35)',
+                color: 'rgba(0,255,65,0.45)',
                 font:  { size: 8, family: 'Courier New' },
                 callback: v => (v >= 0 ? '+' : '') + '$' + v.toFixed(2),
+                maxTicksLimit: 5,
               },
-              grid:   { color: 'rgba(0,255,65,0.07)' },
+              grid: {
+                color: ctx => ctx.tick.value === 0
+                  ? 'rgba(255,120,0,0)'   // zero line handled by dataset
+                  : 'rgba(0,255,65,0.06)',
+              },
               border: { color: 'rgba(0,255,65,0.18)' },
+              afterBuildTicks: axis => {
+                const mn = Math.min(...data);
+                const mx = Math.max(...data);
+                const ticks = [{value: mn}, {value: 0}, {value: mx}];
+                // Add midpoints for readability when range is large
+                if (mx - mn > 0.5) {
+                  ticks.push({value: parseFloat(((mn + 0) / 2).toFixed(4))});
+                  ticks.push({value: parseFloat(((0 + mx) / 2).toFixed(4))});
+                }
+                axis.ticks = ticks.sort((a, b) => a.value - b.value);
+              },
             },
           },
         },
-      };
-
-      if (_pnlChart) {
-        _pnlChart.data.labels      = labels;
-        _pnlChart.data.datasets[0].data        = data;
-        _pnlChart.data.datasets[0].borderColor = color;
-        _pnlChart.update('none');
-      } else {
-        _pnlChart = new Chart($('pnlChart'), cfg);
-      }
+      });
     })
     .catch(() => { $('pnl-summary').textContent = 'ERROR LOADING TRADES'; });
 

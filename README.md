@@ -1,6 +1,6 @@
 # SOL / USDC Autonomous Trading Bot
 
-An autonomous AI trading agent that makes independent decisions based on 7 signal sources including geopolitical events (Truth Social RSS), market sentiment (Fear & Greed, NewsAPI), prediction markets (Polymarket), and technical analysis. Built as a learning project to explore how autonomous agents make decisions under uncertainty when multiple heterogeneous data sources provide incomplete, delayed, or conflicting signals.
+An autonomous AI trading agent that makes independent decisions based on 9 signal sources including market sentiment (Fear & Greed, NewsAPI), prediction markets (Polymarket), and technical analysis (RSI, MACD, MA crossover, Stochastic RSI, Bollinger Bands). Built as a learning project to explore how autonomous agents make decisions under uncertainty when multiple heterogeneous data sources provide incomplete, delayed, or conflicting signals.
 
 ---
 
@@ -14,7 +14,7 @@ Real-time view on local machine — dashboard auto-refreshes every 5 seconds. Sh
 
 ## Groq LLM Decision Engine
 
-Decisions are now made by a Groq LLM (llama-3.1-8b-instant) instead of fixed weighted scores. The agent reasons about all 7 signals and explains its decision in natural language.
+Decisions are now made by a Groq LLM (llama-3.1-8b-instant) instead of fixed weighted scores. The agent reasons about all 9 signals and explains its decision in natural language.
 
 ![Dashboard showing the LLM REASONING panel](dashboard3_screenshot.png)
 
@@ -26,7 +26,7 @@ The bot runs as a **ReAct agent** — a continuous loop of Observe → Reason �
 
 | Step | What happens |
 |---|---|
-| **Observe** | Collect all 7 signals: price, RSI, MACD, Polymarket, news, macro, Trump/geo, Fear & Greed |
+| **Observe** | Collect 9 signals: price, RSI, MACD, MA cross, Stoch RSI, Bollinger, Polymarket, news, macro, Fear & Greed |
 | **Reason** | Groq LLM (llama-3.1-8b-instant) reasons across all signals and explains its decision in natural language |
 | **Act** | Execute BUY / SELL / HOLD via Jupiter v6 (live) or paper account (dry run) |
 | **Reflect** | Log signal snapshot + trade outcome to SQLite; risk manager updates PnL and drawdown state |
@@ -46,11 +46,10 @@ Layer 1  data/       price_feed.py     CoinGecko SOL/USDC prices + OHLCV bootstr
                      polymarket.py     Polymarket Gamma API (Fed cuts + BTC $150k)
                      news_sentiment.py NewsAPI + VADER local NLP (7 crypto topics)
                      macro.py          BTC 24h % change + BTC dominance
-                     trump_signal.py   Truth Social RSS + geopolitical keyword scoring
                      fear_greed.py     Crypto Fear & Greed Index (contrarian)
                      database.py       SQLite persistence (trades, signals, grid)
 
-Layer 2  analysis/   indicators.py     RSI (Wilder EWM) + MACD
+Layer 2  analysis/   indicators.py     RSI, MACD, MA cross, Stoch RSI, Bollinger Bands
                      regime.py         Trending / choppy / ranging detection (ADX/ATR)
 
 Layer 3  decision/   signal_engine.py  Weighted composite signal → BUY / SELL / HOLD
@@ -72,15 +71,18 @@ Layer 5  execution/  wallet.py         AES-encrypted Solana hot wallet
 | News NLP | 20% | NewsAPI + local VADER — real-time crypto sentiment |
 | RSI | 15% | Wilder's RSI, oversold/overbought zones |
 | MACD | 15% | Histogram momentum + zero-line crossover |
-| Polymarket | 10% | Fed rate cut expectations + BTC $150k probability |
-| Macro BTC | 10% | BTC 24h change (tanh) + dominance (linear) |
-| Trump / Geo | 10% | Truth Social posts with geopolitical keyword boosts |
-| Fear & Greed | 10% | Contrarian: extreme fear → bullish, extreme greed → bearish |
+| MA Cross | 13% | MA50 vs MA200 — bull/bear trend bias |
+| Stoch RSI | 10% | Stochastic of RSI — oversold/overbought momentum |
+| Bollinger | 10% | Price position within 2σ bands — mean-reversion signal |
+| Polymarket | 7% | Fed rate cut expectations + BTC $150k probability |
+| Macro BTC | 5% | BTC 24h change (tanh) + dominance (linear) |
+| Fear & Greed | 5% | Contrarian: extreme fear → bullish, extreme greed → bearish |
 
-Composite score in [0, 1]. If a source is unavailable its weight is redistributed
-proportionally across active sources — no phantom neutral votes.
+60% of weight is now technical indicators. Composite score in [0, 1]. If a source is
+unavailable its weight is redistributed proportionally across active sources — no
+phantom neutral votes.
 
-**Thresholds (defaults):** score ≥ 0.62 → BUY · score ≤ 0.38 → SELL · else HOLD
+**Thresholds (defaults):** score ≥ 0.50 → BUY · score ≤ 0.48 → SELL · else HOLD
 
 ---
 
@@ -311,11 +313,10 @@ TRADING-BOT/
 │   │   ├── polymarket.py     # Polymarket Gamma API sentiment
 │   │   ├── news_sentiment.py # NewsAPI + VADER NLP
 │   │   ├── macro.py          # BTC direction + dominance
-│   │   ├── trump_signal.py   # Truth Social RSS + keyword scoring
 │   │   ├── fear_greed.py     # Crypto Fear & Greed Index (contrarian)
 │   │   └── database.py       # SQLite: trades, signals, grid_trades
 │   ├── analysis/
-│   │   ├── indicators.py     # RSI, MACD, normalisation
+│   │   ├── indicators.py     # RSI, MACD, MA cross, Stoch RSI, Bollinger Bands
 │   │   └── regime.py         # Market regime detection (ADX/ATR)
 │   ├── decision/
 │   │   └── signal_engine.py  # Weighted signal aggregation

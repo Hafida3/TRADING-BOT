@@ -43,7 +43,7 @@ SHORT_STOP_LOSS_PCT: float = float(os.getenv("SHORT_STOP_LOSS_PCT", "0.004"))
 REVERSAL_COOLDOWN_TICKS: int = int(os.getenv("REVERSAL_COOLDOWN_TICKS", "3"))
 
 # ── Signal Thresholds ─────────────────────────────────────────────────────────
-BUY_THRESHOLD: float = float(os.getenv("BUY_THRESHOLD", "0.62"))
+BUY_THRESHOLD: float = float(os.getenv("BUY_THRESHOLD", "0.50"))  # .env: 0.50 (ranging market)
 SELL_THRESHOLD: float = float(os.getenv("SELL_THRESHOLD", "0.38"))
 
 # ── External API Keys ────────────────────────────────────────────────────────

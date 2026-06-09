@@ -20,7 +20,7 @@ from pathlib import Path
 import config
 from alerts.telegram import TelegramAlerter
 from dashboard.server import start_dashboard
-from layers.data.database import init_db, save_signal, get_recent_trades
+from layers.data.database import init_db, save_signal, get_recent_trades, get_signal_prices
 from layers.analysis.indicators import (
     calculate_macd,
     calculate_rsi,
@@ -386,10 +386,50 @@ def run():
     start_dashboard(config.DASHBOARD_PORT)
     telegram.send_startup(config.DRY_RUN, config.LOOP_INTERVAL_SECONDS, config.INITIAL_CAPITAL_USDC)
 
-    # Seed price history so indicators can fire on the first iteration
-    log("[Main] Bootstrapping price history…")
-    price_history.extend(bootstrap_price_history(target_len=60))
-    log(f"[Main] Seeded {len(price_history)} historical prices.")
+    # Restore price history from DB; fall back to CoinGecko bootstrap only if needed
+    _24H = 86_400
+    log("[Main] Restoring price history…")
+    try:
+        db_prices = get_signal_prices(200)
+    except Exception as exc:
+        log(f"[PriceRestore] DB query failed: {exc} — will bootstrap")
+        db_prices = []
+
+    if db_prices:
+        oldest_ts, newest_ts = db_prices[0][0], db_prices[-1][0]
+        span_s = newest_ts - oldest_ts
+        span_h = span_s / 3600
+
+        if span_h <= 24:
+            price_history.extend(p for _, p in db_prices)
+            log(
+                f"[PriceRestore] Loaded {len(price_history)} prices from DB "
+                f"spanning {span_h:.1f}h — bootstrap skipped"
+            )
+        else:
+            cutoff = time.time() - _24H
+            recent = [(ts, p) for ts, p in db_prices if ts >= cutoff]
+            price_history.extend(p for _, p in recent)
+            log(
+                f"[PriceRestore] {len(db_prices)} DB rows span {span_h:.1f}h "
+                f"(gap detected) — loaded {len(price_history)} prices from last 24h"
+            )
+    else:
+        log("[PriceRestore] No prices in DB")
+
+    if len(price_history) < 60:
+        before = len(price_history)
+        price_history.extend(bootstrap_price_history(target_len=60))
+        if len(price_history) > MAX_PRICE_HISTORY:
+            price_history[:] = price_history[-MAX_PRICE_HISTORY:]
+        log(
+            f"[PriceRestore] Topped up {before} → {len(price_history)} prices "
+            f"via CoinGecko bootstrap"
+        )
+    else:
+        if len(price_history) > MAX_PRICE_HISTORY:
+            price_history[:] = price_history[-MAX_PRICE_HISTORY:]
+        log(f"[PriceRestore] Ready: {len(price_history)} prices — no bootstrap needed")
 
     # Grid bot — initialized lazily on first price tick
     grid: GridBot | None = None

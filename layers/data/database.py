@@ -146,6 +146,18 @@ def save_grid_trade(level: int, entry_price: float, exit_price: float, pnl_usdc:
         )
 
 
+def get_signal_prices(n: int = 200) -> list[tuple[float, float]]:
+    """Return up to n (timestamp, price) pairs from signal_history, oldest first."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT timestamp, price FROM signal_history "
+            "WHERE price IS NOT NULL "
+            "ORDER BY timestamp DESC LIMIT ?",
+            (n,),
+        ).fetchall()
+    return [(r["timestamp"], r["price"]) for r in reversed(rows)]
+
+
 def get_recent_trades(n: int = 20) -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(

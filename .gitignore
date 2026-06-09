@@ -7,3 +7,6 @@ nohup.out
 sell_signals.csv
 .DS_Store
 CLAUDE.md
+devnet-wallet.json
+.claude/
+data.json

@@ -156,7 +156,7 @@ def _call_claude(
         f"Line 2: TUNE: KEY=value (reason) — only if an adjustment is needed after "
         f"3+ consecutive losses or a regime shift. Omit entirely if not needed.\n"
         f"  Allowed keys: BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), "
-        f"STOP_LOSS_PCT(0.008-0.03), TAKE_PROFIT_PCT(0.016-0.06).\n"
+        f"STOP_LOSS_PCT(0.002-0.012), TAKE_PROFIT_PCT(0.004-0.024).\n"
         f"Remaining lines: your detailed reasoning."
     )
 
@@ -243,7 +243,7 @@ Be decisive — HOLD is only appropriate in the NEUTRAL ZONE ({config.SELL_THRES
 Recent trades:
 {trades_text}
 
-Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reasoning":"[Optional first line: TUNE: KEY=value (reason) if adjustment needed after 3+ losses or regime shift — BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), STOP_LOSS_PCT(0.008-0.03), TAKE_PROFIT_PCT(0.016-0.06).] Then 1-2 sentences of reasoning."}}{memory_ctx}"""
+Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reasoning":"[Optional first line: TUNE: KEY=value (reason) if adjustment needed after 3+ losses or regime shift — BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), STOP_LOSS_PCT(0.002-0.012), TAKE_PROFIT_PCT(0.004-0.024).] Then 1-2 sentences of reasoning."}}{memory_ctx}"""
 
     try:
         resp = requests.post(

@@ -150,13 +150,14 @@ def _call_claude(
         f"Current signal zone: {zone}\n"
         f"Note: if you return HOLD while score is in SELL ZONE, no short position will open.\n"
         f"Be decisive — HOLD is only appropriate in the NEUTRAL ZONE "
-        f"({config.SELL_THRESHOLD}–{config.BUY_THRESHOLD}).\n"
-        f"Decide: BUY / SELL / HOLD and explain why in one sentence.\n"
-        f"Optional — if a parameter needs adjusting after 3+ consecutive losses or a "
-        f"regime shift, append on a new line: "
-        f"TUNE: KEY=value (reason). "
-        f"Allowed: BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), "
-        f"STOP_LOSS_PCT(0.008-0.03), TAKE_PROFIT_PCT(0.016-0.06). Use sparingly."
+        f"({config.SELL_THRESHOLD}–{config.BUY_THRESHOLD}).\n\n"
+        f"Respond in this exact order:\n"
+        f"Line 1: ACTION — one word only: BUY, SELL, or HOLD\n"
+        f"Line 2: TUNE: KEY=value (reason) — only if an adjustment is needed after "
+        f"3+ consecutive losses or a regime shift. Omit entirely if not needed.\n"
+        f"  Allowed keys: BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), "
+        f"STOP_LOSS_PCT(0.008-0.03), TAKE_PROFIT_PCT(0.016-0.06).\n"
+        f"Remaining lines: your detailed reasoning."
     )
 
     try:
@@ -164,7 +165,7 @@ def _call_claude(
         client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         msg = client.messages.create(
             model="claude-haiku-4-5",
-            max_tokens=250,
+            max_tokens=600,
             messages=[{"role": "user", "content": prompt}],
         )
         content = msg.content[0].text.strip()
@@ -242,7 +243,7 @@ Be decisive — HOLD is only appropriate in the NEUTRAL ZONE ({config.SELL_THRES
 Recent trades:
 {trades_text}
 
-Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reasoning":"1-2 sentences [optionally append: TUNE: KEY=value (reason) after 3+ losses or regime shift — allowed: BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), STOP_LOSS_PCT(0.008-0.03), TAKE_PROFIT_PCT(0.016-0.06)]"}}{memory_ctx}"""
+Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reasoning":"[Optional first line: TUNE: KEY=value (reason) if adjustment needed after 3+ losses or regime shift — BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), STOP_LOSS_PCT(0.008-0.03), TAKE_PROFIT_PCT(0.016-0.06).] Then 1-2 sentences of reasoning."}}{memory_ctx}"""
 
     try:
         resp = requests.post(
@@ -265,7 +266,7 @@ Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reaso
                     {"role": "user", "content": user_content},
                 ],
                 "temperature":     0.1,
-                "max_tokens":      350,
+                "max_tokens":      600,
                 "response_format": {"type": "json_object"},
             },
             timeout=10,

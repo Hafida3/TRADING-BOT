@@ -121,28 +121,30 @@ class RiskManager:
 
         return RiskCheck(False, f"Unknown action: {action}")
 
-    def check_sl_tp(self, current_price: float) -> Optional[str]:
+    def check_sl_tp(self, current_price: float, regime: str = "unknown") -> Optional[str]:
         """Return 'STOP_LOSS', 'TAKE_PROFIT', or None for the long position."""
         if not self.position:
             return None
+        sl, tp = config.STOP_LOSS_PCT, config.TAKE_PROFIT_PCT
         pct = self.position.pnl_pct(current_price)
-        if pct <= -config.STOP_LOSS_PCT:
+        if pct <= -sl:
             return "STOP_LOSS"
-        if pct >= config.TAKE_PROFIT_PCT:
+        if pct >= tp:
             return "TAKE_PROFIT"
         return None
 
-    def check_short_sl_tp(self, current_price: float) -> Optional[str]:
+    def check_short_sl_tp(self, current_price: float, regime: str = "unknown") -> Optional[str]:
         """Return 'STOP_LOSS', 'TAKE_PROFIT', or None for the short position.
-        Short TP: price fell >= SHORT_TAKE_PROFIT_PCT below entry.
-        Short SL: price rose >= SHORT_STOP_LOSS_PCT above entry.
+        Short TP: price fell >= tp below entry.
+        Short SL: price rose >= sl above entry.
         """
         if not self.short_position:
             return None
+        sl, tp = config.SHORT_STOP_LOSS_PCT, config.SHORT_TAKE_PROFIT_PCT
         pct = (current_price - self.short_position.entry_price) / self.short_position.entry_price
-        if pct >= config.SHORT_STOP_LOSS_PCT:    # price rose — loss for short
+        if pct >= sl:   # price rose — loss for short
             return "STOP_LOSS"
-        if pct <= -config.SHORT_TAKE_PROFIT_PCT: # price fell — profit for short
+        if pct <= -tp:  # price fell — profit for short
             return "TAKE_PROFIT"
         return None
 

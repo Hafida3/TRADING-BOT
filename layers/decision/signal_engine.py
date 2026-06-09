@@ -33,10 +33,10 @@ _WEIGHTS: dict[str, float] = {
     "macd":       0.15,
     "ma":         0.13,
     "stoch":      0.10,
-    "bb":         0.10,
+    "bb":         0.13,
     "polymarket": 0.07,
     "macro":      0.05,
-    "fear_greed": 0.05,
+    "fear_greed": 0.02,
 }
 
 _GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -118,6 +118,7 @@ def _call_claude(
     top_headline:     str,
     composite_score:  float = 0.5,
     agent_memory:     str = "",
+    agent_soul:       str = "",
 ) -> tuple[str, str] | None:
     """Call claude-haiku-4-5. Returns (action, reasoning) or None."""
     if not config.ANTHROPIC_API_KEY:
@@ -142,15 +143,20 @@ def _call_claude(
         f"News={fmt(news_score)} ({top_headline or 'no headline'}), "
         f"Macro={fmt(macro_score)}, Fear&Greed={fear_greed_raw}/100 ({fear_greed_label}), "
         f"Regime={regime}. "
-        f"Your soul: protect capital, generate asymmetric gains."
-        f"{memory_ctx}\n\n"
+        + (f"\n\nYour governing rules and identity:\n{agent_soul}\n" if agent_soul else "Your soul: protect capital, generate asymmetric gains.")
+        + f"{memory_ctx}\n\n"
         f"Composite score: {composite_score:.3f} "
         f"(BUY threshold: {config.BUY_THRESHOLD}, SELL threshold: {config.SELL_THRESHOLD})\n"
         f"Current signal zone: {zone}\n"
         f"Note: if you return HOLD while score is in SELL ZONE, no short position will open.\n"
         f"Be decisive — HOLD is only appropriate in the NEUTRAL ZONE "
         f"({config.SELL_THRESHOLD}–{config.BUY_THRESHOLD}).\n"
-        f"Decide: BUY / SELL / HOLD and explain why in one sentence."
+        f"Decide: BUY / SELL / HOLD and explain why in one sentence.\n"
+        f"Optional — if a parameter needs adjusting after 3+ consecutive losses or a "
+        f"regime shift, append on a new line: "
+        f"TUNE: KEY=value (reason). "
+        f"Allowed: BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), "
+        f"STOP_LOSS_PCT(0.008-0.03), TAKE_PROFIT_PCT(0.016-0.06). Use sparingly."
     )
 
     try:
@@ -158,7 +164,7 @@ def _call_claude(
         client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         msg = client.messages.create(
             model="claude-haiku-4-5",
-            max_tokens=120,
+            max_tokens=250,
             messages=[{"role": "user", "content": prompt}],
         )
         content = msg.content[0].text.strip()
@@ -193,6 +199,7 @@ def _call_groq(
     composite_score:       float,
     top_headline:          str,
     agent_memory:          str = "",
+    agent_soul:            str = "",
 ) -> tuple[str, float, str] | None:
     """Call Groq llama-3.1-8b-instant. Returns (action, confidence, reasoning) or None."""
     if not config.GROQ_API_KEY:
@@ -235,7 +242,7 @@ Be decisive — HOLD is only appropriate in the NEUTRAL ZONE ({config.SELL_THRES
 Recent trades:
 {trades_text}
 
-Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reasoning":"1-2 sentences"}}{memory_ctx}"""
+Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reasoning":"1-2 sentences [optionally append: TUNE: KEY=value (reason) after 3+ losses or regime shift — allowed: BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), STOP_LOSS_PCT(0.008-0.03), TAKE_PROFIT_PCT(0.016-0.06)]"}}{memory_ctx}"""
 
     try:
         resp = requests.post(
@@ -252,12 +259,13 @@ Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reaso
                         "content": (
                             "You are a quantitative crypto trading engine. "
                             "Output a single JSON object with keys: action, confidence, reasoning."
+                            + (f"\n\nGoverning rules:\n{agent_soul}" if agent_soul else "")
                         ),
                     },
                     {"role": "user", "content": user_content},
                 ],
                 "temperature":     0.1,
-                "max_tokens":      200,
+                "max_tokens":      350,
                 "response_format": {"type": "json_object"},
             },
             timeout=10,
@@ -314,6 +322,7 @@ def generate_signal(
     recent_trades:    Optional[list]  = None,
     top_headline:     str = "",
     agent_memory:     str = "",
+    agent_soul:       str = "",
 ) -> Signal:
 
     # Step 1: composite (always — needed for display bars + fallback)
@@ -387,6 +396,7 @@ def generate_signal(
         top_headline=top_headline,
         composite_score=composite,
         agent_memory=agent_memory,
+        agent_soul=agent_soul,
     )
 
     if claude_result:
@@ -425,6 +435,7 @@ def generate_signal(
         composite_score=composite,
         top_headline=top_headline,
         agent_memory=agent_memory,
+        agent_soul=agent_soul,
     )
 
     if groq_result:

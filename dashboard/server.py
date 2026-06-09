@@ -46,8 +46,24 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
 
     def _serve_stats(self):
         try:
+            import sqlite3
+            import time
             from layers.data.database import get_stats
             stats = get_stats()
+
+            db_path = _DATA_JSON.parent / "trading_bot.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            cutoff = time.time() - 86400
+            row = conn.execute(
+                "SELECT COALESCE(SUM(pnl_usdc), 0.0) AS total FROM trades WHERE timestamp > ?",
+                (cutoff,),
+            ).fetchone()
+            conn.close()
+            pnl_24h = float(row["total"]) if row else 0.0
+            stats["pnl_24h_usdc"] = round(pnl_24h, 4)
+            stats["pnl_24h_pct"]  = round(pnl_24h / 50.0 * 100, 4)
+
             payload = json.dumps(stats).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

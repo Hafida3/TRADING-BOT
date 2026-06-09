@@ -49,6 +49,11 @@ SOUL_FILE   = Path(__file__).parent / "soul.md"
 MEMORY_FILE = Path(__file__).parent / "memory.md"
 MAX_PRICE_HISTORY = 200
 
+
+def log(msg: str = "") -> None:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    print(f"[{ts}] {msg}")
+
 _SELL_LOG_FIELDS = [
     "timestamp", "score", "price",
     "rsi", "macd_histogram", "news_normalized",
@@ -95,7 +100,7 @@ def write_state(state: dict):
     try:
         DATA_JSON.write_text(json.dumps(state, indent=2, default=str))
     except Exception as exc:
-        print(f"[Main] data.json write error: {exc}")
+        log(f"[Main] data.json write error: {exc}")
 
 
 def append_memory_lesson(
@@ -138,9 +143,9 @@ def append_memory_lesson(
     try:
         with MEMORY_FILE.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
-        print(f"[Memory] {'✓ WIN' if win else '✗ LOSS'} lesson appended (PnL ${pnl:+.2f})")
+        log(f"[Memory] {'✓ WIN' if win else '✗ LOSS'} lesson appended (PnL ${pnl:+.2f})")
     except Exception as exc:
-        print(f"[Memory] Write error: {exc}")
+        log(f"[Memory] Write error: {exc}")
     return line
 
 
@@ -157,7 +162,7 @@ def run_weekly_reflection(memory_lessons: list[str]) -> None:
         from layers.data.database import get_recent_trades as _get_trades
         trades = _get_trades(50)
         if not trades:
-            print("[Reflect] No trades to analyse yet.")
+            log("[Reflect] No trades to analyse yet.")
             return
 
         lines = []
@@ -201,10 +206,10 @@ def run_weekly_reflection(memory_lessons: list[str]) -> None:
         with MEMORY_FILE.open("a", encoding="utf-8") as fh:
             fh.write(lesson)
         memory_lessons.append(lesson.strip())
-        print(f"[Reflect] Weekly Sonnet reflection appended to memory.md")
-        print(f"[Reflect] {analysis[:120]}…")
+        log(f"[Reflect] Weekly Sonnet reflection appended to memory.md")
+        log(f"[Reflect] {analysis[:120]}…")
     except Exception as exc:
-        print(f"[Reflect] Error: {exc}")
+        log(f"[Reflect] Error: {exc}")
 
 
 def build_state(
@@ -336,14 +341,15 @@ def run():
     print(f"{'═'*60}\n")
 
     # Load agent soul
+    soul = ""
     if SOUL_FILE.exists():
         soul = SOUL_FILE.read_text(encoding="utf-8")
         mission_line = next(
             (l.strip() for l in soul.splitlines() if l.startswith("Protect")), ""
         )
-        print(f"[Soul] Loaded — Mission: {mission_line}")
+        log(f"[Soul] Loaded — Mission: {mission_line}")
     else:
-        print("[Soul] Warning: soul.md not found — agent running without identity")
+        log("[Soul] Warning: soul.md not found — agent running without identity")
 
     # Load agent memory (Trade Lessons section)
     memory_lessons: list[str] = []
@@ -356,11 +362,11 @@ def run():
                     l.strip() for l in section.splitlines()
                     if l.strip().startswith("-")
                 ]
-            print(f"[Memory] Loaded: {len(memory_lessons)} trade lesson(s)")
+            log(f"[Memory] Loaded: {len(memory_lessons)} trade lesson(s)")
         except Exception as exc:
-            print(f"[Memory] Load error: {exc}")
+            log(f"[Memory] Load error: {exc}")
     else:
-        print("[Memory] Warning: memory.md not found")
+        log("[Memory] Warning: memory.md not found")
 
     keypair  = setup_keypair()
     telegram = TelegramAlerter(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID)
@@ -375,15 +381,15 @@ def run():
     if saved:
         risk.trades.extend(saved)
         risk.realized_pnl = sum(t.get("pnl_usdc", 0) or 0 for t in saved)
-        print(f"[DB] Loaded {len(saved)} historical trades (realized PnL ${risk.realized_pnl:+.2f})")
+        log(f"[DB] Loaded {len(saved)} historical trades (realized PnL ${risk.realized_pnl:+.2f})")
 
     start_dashboard(config.DASHBOARD_PORT)
     telegram.send_startup(config.DRY_RUN, config.LOOP_INTERVAL_SECONDS, config.INITIAL_CAPITAL_USDC)
 
     # Seed price history so indicators can fire on the first iteration
-    print("[Main] Bootstrapping price history…")
+    log("[Main] Bootstrapping price history…")
     price_history.extend(bootstrap_price_history(target_len=60))
-    print(f"[Main] Seeded {len(price_history)} historical prices.")
+    log(f"[Main] Seeded {len(price_history)} historical prices.")
 
     # Grid bot — initialized lazily on first price tick
     grid: GridBot | None = None
@@ -403,29 +409,30 @@ def run():
     while running:
         iteration += 1
         now = datetime.now(timezone.utc)
-        print(f"\n[{now.strftime('%H:%M:%S')} UTC] ── Iteration #{iteration} ──────────")
+        print()
+        log(f"── Iteration #{iteration} ──────────")
 
         try:
             # ── 1. Price ──────────────────────────────────────────────────
             price = get_sol_price(use_cache=False)
             if price is None:
-                print("[Main] Price unavailable – skipping iteration.")
+                log("[Main] Price unavailable – skipping iteration.")
                 time.sleep(30)
                 continue
 
             price_history.append(price)
             if len(price_history) > MAX_PRICE_HISTORY:
                 price_history.pop(0)
-            print(f"  Price   : ${price:,.4f}")
+            log(f"  Price   : ${price:,.4f}")
 
             # ── 2. Polymarket ─────────────────────────────────────────────
             pm_sentiment = get_sol_sentiment()
-            print(f"  Polym.  : {pm_sentiment:.3f}")
+            log(f"  Polym.  : {pm_sentiment:.3f}")
 
             # ── 3. News sentiment (VADER local NLP, 30-min cache) ────────
             news = get_news_sentiment(config.NEWSAPI_KEY)
             cached_tag = " (cached)" if news.get("cached") else f" [{news.get('headline_count', 0)} headlines]"
-            print(f"  News    : {news['score']:+.3f} → norm={news['normalized']:.3f}{cached_tag} | '{news['reason']}'")
+            log(f"  News    : {news['score']:+.3f} → norm={news['normalized']:.3f}{cached_tag} | '{news['reason']}'")
 
             # ── 4. Macro BTC signals (2-min cache) ────────────────────────
             macro = get_macro_signal()
@@ -435,12 +442,12 @@ def run():
             top_hl      = crypto_news["top_headlines"][0] if crypto_news.get("top_headlines") else {}
             top_headline = top_hl.get("title", "")
             if top_headline:
-                print(f"  TopNews : [{top_hl.get('source','')}] {top_headline[:70]}")
+                log(f"  TopNews : [{top_hl.get('source','')}] {top_headline[:70]}")
 
             # ── 4c. Fear & Greed Index (30-min cache) ─────────────────────
             fear_greed = get_fear_greed()
             fg_tag = " (cached)" if fear_greed.get("cached") else ""
-            print(f"  F&G     : {fear_greed['score']} ({fear_greed['label']}) → norm={fear_greed['normalized']:.3f}{fg_tag}")
+            log(f"  F&G     : {fear_greed['score']} ({fear_greed['label']}) → norm={fear_greed['normalized']:.3f}{fg_tag}")
 
             # ── 4d. Grid bot: initialize on first tick, then update ────────
             if grid is None:
@@ -456,7 +463,7 @@ def run():
                         g_low  = price * 0.95
                         g_high = price * 1.05
                 grid = GridBot(grid_capital, g_low, g_high, num_levels=config.GRID_NUM_LEVELS)
-                print(f"  [Grid] Init range=${g_low:.2f}–${g_high:.2f} | capital=${grid_capital:.2f}")
+                log(f"  [Grid] Init range=${g_low:.2f}–${g_high:.2f} | capital=${grid_capital:.2f}")
             grid.update(price)
 
 
@@ -472,7 +479,7 @@ def run():
             rsi_str  = f"{rsi:.1f}"  if rsi       is not None else "warming up"
             macd_str = f"{macd_line:.4f}" if macd_line is not None else "warming up"
             hist_str = f"{hist:.4f}" if hist       is not None else "—"
-            print(f"  RSI     : {rsi_str}  |  MACD: {macd_str}  |  hist: {hist_str}")
+            log(f"  RSI     : {rsi_str}  |  MACD: {macd_str}  |  hist: {hist_str}")
 
             # ── 5b. Additional technical indicators ───────────────────────
             ma_fast_val, ma_slow_val, ma_score_val = calculate_ma_crossover(price_history)
@@ -482,7 +489,7 @@ def run():
             ma_str    = f"MA50={ma_fast_val:.2f}/MA200={ma_slow_val:.2f}" if ma_score_val is not None else "warming up"
             stoch_str = f"{stoch_k_val:.1f}" if stoch_k_val is not None else "—"
             bb_str    = f"{bb_score_val:.3f}" if bb_score_val is not None else "—"
-            print(f"  MA/Stch : {ma_str}  StochK={stoch_str}  BB={bb_str}")
+            log(f"  MA/Stch : {ma_str}  StochK={stoch_str}  BB={bb_str}")
 
             # ── 5b. Regime detection (observation only) ───────────────────
             regime_info = detect_regime(price_history)
@@ -490,7 +497,7 @@ def run():
             adx_str = f"{regime_info['adx']:.1f}" if regime_info["adx"] is not None else "—"
             atr_str = f"{regime_info['atr']:.4f}" if regime_info["atr"] is not None else "—"
             atr_up  = "↑" if regime_info["atr_trending_up"] else "→"
-            print(f"  Regime  : {r.upper()} (ADX={adx_str}  ATR={atr_str}{atr_up})")
+            log(f"  Regime  : {r.upper()} (ADX={adx_str}  ATR={atr_str}{atr_up})")
 
             # ── 6. Signal ─────────────────────────────────────────────────
             sig = generate_signal(
@@ -516,10 +523,18 @@ def run():
                 recent_trades=get_recent_trades(5),
                 top_headline=top_headline,
                 agent_memory=_memory_context(memory_lessons),
+                agent_soul=soul,
             )
-            print(f"  Signal  : {sig.action} ({sig.score:.3f}) | {sig.reason}")
+            log(f"  Signal  : {sig.action} ({sig.score:.3f}) | {sig.reason}")
 
-            # ── 6a. Persist signal to DB ──────────────────────────────────
+            # ── 6a. Apply any LLM self-tune directives ────────────────────
+            if sig.reasoning:
+                from layers.decision.parameter_tuner import parse_tune_directives, update_parameter
+                for t_key, t_val, t_reason in parse_tune_directives(sig.reasoning):
+                    ok, msg = update_parameter(t_key, t_val, t_reason)
+                    log(f"  [Tuner] {msg}")
+
+            # ── 6c. Persist signal to DB ──────────────────────────────────
             try:
                 save_signal(
                     timestamp=now.timestamp(),
@@ -554,11 +569,11 @@ def run():
                     macro_score=macro.get("macro_score"),
                     regime=regime_info["regime"],
                 )
-                print(f"  [SellLog] score={sig.score:.4f} → logged to sell_signals.csv")
+                log(f"  [SellLog] score={sig.score:.4f} → logged to sell_signals.csv")
 
             # ── 7. Stop-loss / Take-profit checks (long + short) ─────────
-            long_exit  = risk.check_sl_tp(price)
-            short_exit = risk.check_short_sl_tp(price)
+            long_exit  = risk.check_sl_tp(price, regime=regime_info["regime"])
+            short_exit = risk.check_short_sl_tp(price, regime=regime_info["regime"])
 
             if long_exit and risk.position:
                 trade = risk.close_position(price)
@@ -566,7 +581,7 @@ def run():
                 risk.last_trade_tick      = iteration
                 risk.last_trade_direction = "long"
                 pnl = trade["pnl_usdc"]
-                print(f"  {long_exit} triggered (LONG) | PnL ${pnl:+.2f}")
+                log(f"  {long_exit} triggered (LONG) | PnL ${pnl:+.2f}")
                 memory_lessons.append(append_memory_lesson(
                     trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
                 ))
@@ -585,7 +600,7 @@ def run():
                 risk.last_trade_tick      = iteration
                 risk.last_trade_direction = "short"
                 pnl = trade["pnl_usdc"]
-                print(f"  {short_exit} triggered (SHORT) | PnL ${pnl:+.2f}")
+                log(f"  {short_exit} triggered (SHORT) | PnL ${pnl:+.2f}")
                 memory_lessons.append(append_memory_lesson(
                     trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
                 ))
@@ -601,7 +616,7 @@ def run():
                     risk.last_trade_tick      = iteration
                     risk.last_trade_direction = "short"
                     pnl = trade["pnl_usdc"]
-                    print(f"  Covering SHORT @ ${price} | PnL ${pnl:+.2f}")
+                    log(f"  Covering SHORT @ ${price} | PnL ${pnl:+.2f}")
                     memory_lessons.append(append_memory_lesson(
                         trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
                     ))
@@ -611,7 +626,7 @@ def run():
                     check = risk.check_trade("BUY", price, config.TRADE_AMOUNT_USDC,
                                              current_tick=iteration)
                     if check.approved:
-                        print(f"  Executing BUY  size=${check.adjusted_size_usdc:.2f} USDC")
+                        log(f"  Executing BUY  size=${check.adjusted_size_usdc:.2f} USDC")
                         if not config.DRY_RUN and keypair:
                             result = buy_sol_with_usdc(
                                 check.adjusted_size_usdc, keypair,
@@ -621,15 +636,15 @@ def run():
                                 risk.open_position(price, check.adjusted_size_usdc)
                                 telegram.send_trade("BUY", price, check.adjusted_size_usdc,
                                                     dry_run=False, reason=sig.reason)
-                                print(f"  TX: {result['tx_signature']}")
+                                log(f"  TX: {result['tx_signature']}")
                             else:
-                                print(f"  BUY failed: {result.get('error')}")
+                                log(f"  BUY failed: {result.get('error')}")
                         else:
                             risk.open_position(price, check.adjusted_size_usdc)
                             telegram.send_trade("BUY", price, check.adjusted_size_usdc,
                                                 dry_run=True, reason=sig.reason)
                     else:
-                        print(f"  BUY blocked: {check.reason}")
+                        log(f"  BUY blocked: {check.reason}")
 
             elif sig.action == "SELL":
                 if risk.position:
@@ -641,7 +656,7 @@ def run():
                         risk.last_trade_tick      = iteration
                         risk.last_trade_direction = "long"
                         pnl = trade["pnl_usdc"]
-                        print(f"  Executing SELL | PnL ${pnl:+.2f}")
+                        log(f"  Executing SELL | PnL ${pnl:+.2f}")
                         memory_lessons.append(append_memory_lesson(
                             trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
                         ))
@@ -654,7 +669,7 @@ def run():
                                             pnl=pnl, dry_run=config.DRY_RUN,
                                             reason=sig.reason)
                     else:
-                        print(f"  SELL blocked: {check.reason}")
+                        log(f"  SELL blocked: {check.reason}")
 
                 elif config.DRY_RUN and not risk.short_position:
                     # Open simulated short (paper trading only)
@@ -662,12 +677,12 @@ def run():
                                              current_tick=iteration)
                     if check.approved:
                         risk.open_short_position(price, check.adjusted_size_usdc)
-                        print(f"  Opening SHORT @ ${price} | size=${check.adjusted_size_usdc:.2f} USDC"
+                        log(f"  Opening SHORT @ ${price} | size=${check.adjusted_size_usdc:.2f} USDC"
                               f" | TP={config.SHORT_TAKE_PROFIT_PCT:.1%} SL={config.SHORT_STOP_LOSS_PCT:.1%}")
                         telegram.send_trade("SHORT", price, check.adjusted_size_usdc,
                                             dry_run=True, reason=sig.reason)
                     else:
-                        print(f"  SHORT blocked: {check.reason}")
+                        log(f"  SHORT blocked: {check.reason}")
 
             # ── 9. Portfolio summary ──────────────────────────────────────
             upnl       = risk.position.unrealized_pnl(price) if risk.position else 0.0
@@ -679,7 +694,7 @@ def run():
                 pos_str = f"  LONG uPnL ${upnl:+.2f}"
             elif risk.short_position:
                 pos_str = f"  SHORT uPnL ${short_upnl:+.2f}"
-            print(f"  Portfolio: ${pv:.2f}  realized ${risk.realized_pnl:+.2f}{pos_str}")
+            log(f"  Portfolio: ${pv:.2f}  realized ${risk.realized_pnl:+.2f}{pos_str}")
 
             # ── 10. Dashboard data ────────────────────────────────────────
             write_state(build_state(
@@ -717,11 +732,11 @@ def run():
                 run_weekly_reflection(memory_lessons)
 
         except Exception as exc:
-            print(f"[Main] Unhandled error: {exc}")
+            log(f"[Main] Unhandled error: {exc}")
             telegram.send_alert(str(exc), level="ERROR")
 
         if running:
-            print(f"  Sleeping {config.LOOP_INTERVAL_SECONDS}s…")
+            log(f"  Sleeping {config.LOOP_INTERVAL_SECONDS}s…")
             time.sleep(config.LOOP_INTERVAL_SECONDS)
 
     # ── Shutdown ──────────────────────────────────────────────────────────
@@ -729,7 +744,7 @@ def run():
     upnl = risk.position.unrealized_pnl(current_price) if risk.position else 0.0
     pv   = risk.portfolio_value(current_price)
     telegram.send_shutdown(pv, risk.realized_pnl + upnl, len(risk.trades))
-    print("\n[Main] Stopped cleanly.")
+    log("[Main] Stopped cleanly.")
 
 
 # ── CLI dispatch ──────────────────────────────────────────────────────────────

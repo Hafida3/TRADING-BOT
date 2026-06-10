@@ -663,38 +663,44 @@ def run():
                     telegram.send_trade("COVER", price, trade["size_usdc"],
                                         pnl=pnl, dry_run=config.DRY_RUN)
                 else:
-                    check = risk.check_trade(
-                        "BUY", price, config.TRADE_AMOUNT_USDC,
-                        current_tick=iteration,
-                        regime=regime_info.get("regime", "unknown"),
-                        macro_score=sig.macro_score,
-                    )
-                    if check.approved:
-                        log(f"  Executing BUY  size=${check.adjusted_size_usdc:.2f} USDC")
-                        if not config.DRY_RUN and keypair:
-                            result = buy_sol_with_usdc(
-                                check.adjusted_size_usdc, keypair,
-                                config.SOLANA_RPC_URL, dry_run=False,
-                            )
-                            if result["success"]:
-                                risk.open_position(price, check.adjusted_size_usdc)
-                                telegram.send_trade("BUY", price, check.adjusted_size_usdc,
-                                                    dry_run=False, reason=sig.reason)
-                                log(f"  TX: {result['tx_signature']}")
-                            else:
-                                log(f"  BUY failed: {result.get('error')}")
-                        else:
-                            risk.open_position(price, check.adjusted_size_usdc)
-                            telegram.send_trade("BUY", price, check.adjusted_size_usdc,
-                                                dry_run=True, reason=sig.reason)
-                    elif check.reason.startswith("RULE_VETO:"):
+                    if sig.score < config.BUY_THRESHOLD:
                         log(
-                            f"[RULE_VETO] LONG blocked | regime={regime_info.get('regime')} "
-                            f"macro={sig.macro_score:.3f} composite={sig.score:.3f} "
-                            f"LLM={sig.action}"
+                            f"[CONSENSUS_BLOCK] LLM=BUY composite={sig.score:.3f} "
+                            f"< BUY_THRESHOLD={config.BUY_THRESHOLD} — no LONG opened"
                         )
                     else:
-                        log(f"  BUY blocked: {check.reason}")
+                        check = risk.check_trade(
+                            "BUY", price, config.TRADE_AMOUNT_USDC,
+                            current_tick=iteration,
+                            regime=regime_info.get("regime", "unknown"),
+                            macro_score=sig.macro_score,
+                        )
+                        if check.approved:
+                            log(f"  Executing BUY  size=${check.adjusted_size_usdc:.2f} USDC")
+                            if not config.DRY_RUN and keypair:
+                                result = buy_sol_with_usdc(
+                                    check.adjusted_size_usdc, keypair,
+                                    config.SOLANA_RPC_URL, dry_run=False,
+                                )
+                                if result["success"]:
+                                    risk.open_position(price, check.adjusted_size_usdc)
+                                    telegram.send_trade("BUY", price, check.adjusted_size_usdc,
+                                                        dry_run=False, reason=sig.reason)
+                                    log(f"  TX: {result['tx_signature']}")
+                                else:
+                                    log(f"  BUY failed: {result.get('error')}")
+                            else:
+                                risk.open_position(price, check.adjusted_size_usdc)
+                                telegram.send_trade("BUY", price, check.adjusted_size_usdc,
+                                                    dry_run=True, reason=sig.reason)
+                        elif check.reason.startswith("RULE_VETO:"):
+                            log(
+                                f"[RULE_VETO] LONG blocked | regime={regime_info.get('regime')} "
+                                f"macro={sig.macro_score:.3f} composite={sig.score:.3f} "
+                                f"LLM={sig.action}"
+                            )
+                        else:
+                            log(f"  BUY blocked: {check.reason}")
 
             elif sig.action == "SELL":
                 if risk.position:
@@ -723,16 +729,22 @@ def run():
 
                 elif config.DRY_RUN and not risk.short_position:
                     # Open simulated short (paper trading only)
-                    check = risk.check_trade("SHORT", price, config.TRADE_AMOUNT_USDC,
-                                             current_tick=iteration)
-                    if check.approved:
-                        risk.open_short_position(price, check.adjusted_size_usdc)
-                        log(f"  Opening SHORT @ ${price} | size=${check.adjusted_size_usdc:.2f} USDC"
-                              f" | TP={config.SHORT_TAKE_PROFIT_PCT:.1%} SL={config.SHORT_STOP_LOSS_PCT:.1%}")
-                        telegram.send_trade("SHORT", price, check.adjusted_size_usdc,
-                                            dry_run=True, reason=sig.reason)
+                    if sig.score > config.SELL_THRESHOLD:
+                        log(
+                            f"[CONSENSUS_BLOCK] LLM=SELL composite={sig.score:.3f} "
+                            f"> SELL_THRESHOLD={config.SELL_THRESHOLD} — no SHORT opened"
+                        )
                     else:
-                        log(f"  SHORT blocked: {check.reason}")
+                        check = risk.check_trade("SHORT", price, config.TRADE_AMOUNT_USDC,
+                                                 current_tick=iteration)
+                        if check.approved:
+                            risk.open_short_position(price, check.adjusted_size_usdc)
+                            log(f"  Opening SHORT @ ${price} | size=${check.adjusted_size_usdc:.2f} USDC"
+                                  f" | TP={config.SHORT_TAKE_PROFIT_PCT:.1%} SL={config.SHORT_STOP_LOSS_PCT:.1%}")
+                            telegram.send_trade("SHORT", price, check.adjusted_size_usdc,
+                                                dry_run=True, reason=sig.reason)
+                        else:
+                            log(f"  SHORT blocked: {check.reason}")
 
             # ── 9. Portfolio summary ──────────────────────────────────────
             upnl       = risk.position.unrealized_pnl(price) if risk.position else 0.0

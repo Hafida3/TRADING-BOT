@@ -19,15 +19,31 @@ def _connect() -> sqlite3.Connection:
 
 def _migrate(conn: sqlite3.Connection) -> None:
     """Add columns introduced after initial schema creation."""
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(signal_history)")}
-    if "llm_reasoning" not in existing:
+    existing_sig = {row[1] for row in conn.execute("PRAGMA table_info(signal_history)")}
+    if "llm_reasoning" not in existing_sig:
         conn.execute("ALTER TABLE signal_history ADD COLUMN llm_reasoning TEXT")
-    if "ma_score" not in existing:
+    if "ma_score" not in existing_sig:
         conn.execute("ALTER TABLE signal_history ADD COLUMN ma_score REAL")
-    if "stoch_score" not in existing:
+    if "stoch_score" not in existing_sig:
         conn.execute("ALTER TABLE signal_history ADD COLUMN stoch_score REAL")
-    if "bb_score" not in existing:
+    if "bb_score" not in existing_sig:
         conn.execute("ALTER TABLE signal_history ADD COLUMN bb_score REAL")
+
+    existing_tr = {row[1] for row in conn.execute("PRAGMA table_info(trades)")}
+    if "gross_pnl" not in existing_tr:
+        conn.execute("ALTER TABLE trades ADD COLUMN gross_pnl REAL")
+    if "fee_usdc" not in existing_tr:
+        conn.execute("ALTER TABLE trades ADD COLUMN fee_usdc REAL")
+    if "net_pnl" not in existing_tr:
+        conn.execute("ALTER TABLE trades ADD COLUMN net_pnl REAL")
+
+    existing_gt = {row[1] for row in conn.execute("PRAGMA table_info(grid_trades)")}
+    if "gross_pnl" not in existing_gt:
+        conn.execute("ALTER TABLE grid_trades ADD COLUMN gross_pnl REAL")
+    if "fee_usdc" not in existing_gt:
+        conn.execute("ALTER TABLE grid_trades ADD COLUMN fee_usdc REAL")
+    if "net_pnl" not in existing_gt:
+        conn.execute("ALTER TABLE grid_trades ADD COLUMN net_pnl REAL")
 
 
 def init_db() -> None:
@@ -88,8 +104,9 @@ def save_trade(
         conn.execute(
             """INSERT INTO trades
                (timestamp, direction, entry_price, exit_price, size_usdc,
-                sol_amount, pnl_usdc, pnl_pct, regime, signal_score, fear_greed, trump_score)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                sol_amount, pnl_usdc, pnl_pct, regime, signal_score, fear_greed, trump_score,
+                gross_pnl, fee_usdc, net_pnl)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 trade.get("exit_time", time.time()),
                 trade.get("direction", ""),
@@ -103,6 +120,9 @@ def save_trade(
                 signal_score,
                 fear_greed,
                 trump_score,
+                trade.get("gross_pnl"),
+                trade.get("fee_usdc"),
+                trade.get("net_pnl"),
             ),
         )
 
@@ -137,12 +157,22 @@ def save_signal(
         )
 
 
-def save_grid_trade(level: int, entry_price: float, exit_price: float, pnl_usdc: float) -> None:
+def save_grid_trade(
+    level: int,
+    entry_price: float,
+    exit_price: float,
+    pnl_usdc: float,
+    gross_pnl: float = None,
+    fee_usdc: float = None,
+    net_pnl: float = None,
+) -> None:
     with _connect() as conn:
         conn.execute(
-            """INSERT INTO grid_trades (timestamp, level, entry_price, exit_price, pnl_usdc)
-               VALUES (?,?,?,?,?)""",
-            (time.time(), level, entry_price, exit_price, pnl_usdc),
+            """INSERT INTO grid_trades
+               (timestamp, level, entry_price, exit_price, pnl_usdc, gross_pnl, fee_usdc, net_pnl)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (time.time(), level, entry_price, exit_price, pnl_usdc,
+             gross_pnl, fee_usdc, net_pnl),
         )
 
 
@@ -168,7 +198,9 @@ def get_recent_trades(n: int = 20) -> list[dict]:
 
 def get_stats() -> dict:
     with _connect() as conn:
-        rows = conn.execute("SELECT pnl_usdc FROM trades").fetchall()
+        rows = conn.execute(
+            "SELECT COALESCE(net_pnl, pnl_usdc) AS effective_pnl FROM trades"
+        ).fetchall()
 
     if not rows:
         return {
@@ -179,7 +211,7 @@ def get_stats() -> dict:
             "total_pnl": 0.0,
         }
 
-    pnls = [r["pnl_usdc"] for r in rows if r["pnl_usdc"] is not None]
+    pnls = [r["effective_pnl"] for r in rows if r["effective_pnl"] is not None]
     wins = sum(1 for p in pnls if p > 0)
     return {
         "total_trades": len(pnls),

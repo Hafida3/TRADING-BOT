@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+import config
 from layers.data.database import save_grid_trade as _db_save_grid_trade
 
 
@@ -120,10 +121,13 @@ class GridBot:
 
             # Price rose through level → SELL if holding
             elif prev < lvl.price <= current_price and lvl.has_position:
+                entry_notional  = lvl.sol_amount * lvl.entry_price
                 usdc_out        = lvl.sol_amount * current_price
-                pnl             = usdc_out - lvl.sol_amount * lvl.entry_price
-                self.free_usdc += usdc_out
-                self.realized_pnl += pnl
+                gross_pnl       = usdc_out - entry_notional
+                fee             = (entry_notional + usdc_out) * config.FEE_RATE_PCT
+                net_pnl         = gross_pnl - fee
+                self.free_usdc += usdc_out - fee
+                self.realized_pnl += net_pnl
                 ev = {
                     "action":        "SELL",
                     "level":         lvl.index,
@@ -131,19 +135,28 @@ class GridBot:
                     "exec_price":    current_price,
                     "sol_amount":    round(lvl.sol_amount, 6),
                     "usdc_received": round(usdc_out, 4),
-                    "pnl_usdc":      round(pnl, 4),
+                    "pnl_usdc":      round(gross_pnl, 4),
+                    "gross_pnl":     round(gross_pnl, 4),
+                    "fee_usdc":      round(fee, 6),
+                    "net_pnl":       round(net_pnl, 4),
                     "entry_price":   lvl.entry_price,
                     "time":          time.time(),
                 }
                 executed.append(ev)
                 self.trades.append(ev)
                 try:
-                    _db_save_grid_trade(lvl.index, lvl.entry_price, current_price, round(pnl, 4))
+                    _db_save_grid_trade(
+                        lvl.index, lvl.entry_price, current_price,
+                        round(gross_pnl, 4),
+                        gross_pnl=round(gross_pnl, 4),
+                        fee_usdc=round(fee, 6),
+                        net_pnl=round(net_pnl, 4),
+                    )
                 except Exception:
                     pass
                 print(
                     f"[Grid] SELL lvl {lvl.index} (${lvl.price:.2f}) "
-                    f"exec ${current_price:.4f} | PnL ${pnl:+.4f}"
+                    f"exec ${current_price:.4f} | gross ${gross_pnl:+.4f} fee ${fee:.4f} net ${net_pnl:+.4f}"
                 )
                 lvl.has_position = False
                 lvl.sol_amount   = 0.0

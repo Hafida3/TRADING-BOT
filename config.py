@@ -33,6 +33,7 @@ DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "8080"))
 # ── Risk ──────────────────────────────────────────────────────────────────────
 MAX_POSITION_SIZE_PCT: float = float(os.getenv("MAX_POSITION_SIZE_PCT", "0.25"))
 MAX_DRAWDOWN_PCT: float = float(os.getenv("MAX_DRAWDOWN_PCT", "0.15"))
+FEE_RATE_PCT: float = float(os.getenv("FEE_RATE_PCT", "0.0015"))
 STOP_LOSS_PCT: float = float(os.getenv("STOP_LOSS_PCT", "0.004"))
 TAKE_PROFIT_PCT: float = float(os.getenv("TAKE_PROFIT_PCT", "0.008"))
 

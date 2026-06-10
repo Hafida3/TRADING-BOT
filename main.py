@@ -112,7 +112,7 @@ def append_memory_lesson(
     fg_raw:      int | None,
 ) -> str:
     """Append one trade lesson to memory.md. Returns the lesson line."""
-    pnl       = trade.get("pnl_usdc", 0) or 0
+    pnl = (trade.get("net_pnl") if trade.get("net_pnl") is not None else trade.get("pnl_usdc", 0)) or 0
     win       = pnl > 0
     direction = trade.get("direction", "long").upper()
     entry     = trade.get("entry_price", 0)
@@ -380,7 +380,10 @@ def run():
     saved = get_recent_trades(100)
     if saved:
         risk.trades.extend(saved)
-        risk.realized_pnl = sum(t.get("pnl_usdc", 0) or 0 for t in saved)
+        risk.realized_pnl = sum(
+            (t.get("net_pnl") if t.get("net_pnl") is not None else t.get("pnl_usdc", 0)) or 0
+            for t in saved
+        )
         log(f"[DB] Loaded {len(saved)} historical trades (realized PnL ${risk.realized_pnl:+.2f})")
 
     start_dashboard(config.DASHBOARD_PORT)
@@ -620,8 +623,8 @@ def run():
                 trade["regime"] = regime_info["regime"]
                 risk.last_trade_tick      = iteration
                 risk.last_trade_direction = "long"
-                pnl = trade["pnl_usdc"]
-                log(f"  {long_exit} triggered (LONG) | PnL ${pnl:+.2f}")
+                pnl = trade["net_pnl"]
+                log(f"  {long_exit} triggered (LONG) | gross ${trade['gross_pnl']:+.2f} fee ${trade['fee_usdc']:.4f} net ${pnl:+.2f}")
                 memory_lessons.append(append_memory_lesson(
                     trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
                 ))
@@ -639,8 +642,8 @@ def run():
                 trade["regime"] = regime_info["regime"]
                 risk.last_trade_tick      = iteration
                 risk.last_trade_direction = "short"
-                pnl = trade["pnl_usdc"]
-                log(f"  {short_exit} triggered (SHORT) | PnL ${pnl:+.2f}")
+                pnl = trade["net_pnl"]
+                log(f"  {short_exit} triggered (SHORT) | gross ${trade['gross_pnl']:+.2f} fee ${trade['fee_usdc']:.4f} net ${pnl:+.2f}")
                 memory_lessons.append(append_memory_lesson(
                     trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
                 ))
@@ -655,8 +658,8 @@ def run():
                     trade["regime"] = regime_info["regime"]
                     risk.last_trade_tick      = iteration
                     risk.last_trade_direction = "short"
-                    pnl = trade["pnl_usdc"]
-                    log(f"  Covering SHORT @ ${price} | PnL ${pnl:+.2f}")
+                    pnl = trade["net_pnl"]
+                    log(f"  Covering SHORT @ ${price} | gross ${trade['gross_pnl']:+.2f} fee ${trade['fee_usdc']:.4f} net ${pnl:+.2f}")
                     memory_lessons.append(append_memory_lesson(
                         trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
                     ))
@@ -711,8 +714,8 @@ def run():
                         trade["regime"] = regime_info["regime"]
                         risk.last_trade_tick      = iteration
                         risk.last_trade_direction = "long"
-                        pnl = trade["pnl_usdc"]
-                        log(f"  Executing SELL | PnL ${pnl:+.2f}")
+                        pnl = trade["net_pnl"]
+                        log(f"  Executing SELL | gross ${trade['gross_pnl']:+.2f} fee ${trade['fee_usdc']:.4f} net ${pnl:+.2f}")
                         memory_lessons.append(append_memory_lesson(
                             trade, price, regime_info["regime"], rsi, pm_sentiment, fear_greed.get("score")
                         ))

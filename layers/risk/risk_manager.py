@@ -170,11 +170,13 @@ class RiskManager:
             return {}
         pos = self.position
         usdc_returned = pos.sol_amount * price
-        pnl = usdc_returned - pos.size_usdc
-        pnl_pct = pnl / pos.size_usdc
+        gross_pnl = usdc_returned - pos.size_usdc
+        fee = (pos.size_usdc + usdc_returned) * config.FEE_RATE_PCT
+        net_pnl = gross_pnl - fee
+        pnl_pct = gross_pnl / pos.size_usdc
 
-        self.free_usdc += usdc_returned
-        self.realized_pnl += pnl
+        self.free_usdc += usdc_returned - fee
+        self.realized_pnl += net_pnl
         pv = self.free_usdc
         if pv > self.peak_usdc:
             self.peak_usdc = pv
@@ -185,8 +187,11 @@ class RiskManager:
             "exit_price":  price,
             "size_usdc":   pos.size_usdc,
             "sol_amount":  pos.sol_amount,
-            "pnl_usdc":    round(pnl, 4),
+            "pnl_usdc":    round(gross_pnl, 4),
             "pnl_pct":     round(pnl_pct, 6),
+            "gross_pnl":   round(gross_pnl, 4),
+            "fee_usdc":    round(fee, 6),
+            "net_pnl":     round(net_pnl, 4),
             "entry_time":  pos.entry_time,
             "exit_time":   time.time(),
         }
@@ -212,11 +217,14 @@ class RiskManager:
         if not self.short_position:
             return {}
         pos       = self.short_position
-        float_pnl = (pos.entry_price - price) * pos.sol_amount
-        pnl_pct   = float_pnl / pos.size_usdc
+        gross_pnl = (pos.entry_price - price) * pos.sol_amount
+        cover_notional = pos.sol_amount * price
+        fee = (pos.size_usdc + cover_notional) * config.FEE_RATE_PCT
+        net_pnl = gross_pnl - fee
+        pnl_pct = gross_pnl / pos.size_usdc
 
-        self.free_usdc    += pos.size_usdc + float_pnl   # return margin ± PnL
-        self.realized_pnl += float_pnl
+        self.free_usdc    += pos.size_usdc + gross_pnl - fee   # return margin ± net
+        self.realized_pnl += net_pnl
         pv = self.free_usdc
         if pv > self.peak_usdc:
             self.peak_usdc = pv
@@ -227,8 +235,11 @@ class RiskManager:
             "exit_price":  price,
             "size_usdc":   pos.size_usdc,
             "sol_amount":  pos.sol_amount,
-            "pnl_usdc":    round(float_pnl, 4),
+            "pnl_usdc":    round(gross_pnl, 4),
             "pnl_pct":     round(pnl_pct, 6),
+            "gross_pnl":   round(gross_pnl, 4),
+            "fee_usdc":    round(fee, 6),
+            "net_pnl":     round(net_pnl, 4),
             "entry_time":  pos.entry_time,
             "exit_time":   time.time(),
         }

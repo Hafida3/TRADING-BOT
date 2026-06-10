@@ -56,7 +56,8 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
             conn.row_factory = sqlite3.Row
             cutoff = time.time() - 86400
             row = conn.execute(
-                "SELECT COALESCE(SUM(pnl_usdc), 0.0) AS total FROM trades WHERE timestamp > ?",
+                "SELECT COALESCE(SUM(COALESCE(net_pnl, pnl_usdc)), 0.0) AS total "
+                "FROM trades WHERE timestamp > ?",
                 (cutoff,),
             ).fetchone()
             conn.close()
@@ -83,7 +84,8 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
             conn = sqlite3.connect(str(db_path))
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                "SELECT id, timestamp, direction, entry_price, exit_price, pnl_usdc "
+                "SELECT id, timestamp, direction, entry_price, exit_price, "
+                "pnl_usdc, gross_pnl, fee_usdc, net_pnl "
                 "FROM trades ORDER BY timestamp ASC"
             ).fetchall()
             conn.close()

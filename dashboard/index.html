@@ -233,7 +233,7 @@ html, body {
 
 .trade-row {
   display: grid;
-  grid-template-columns: 74px 38px 46px 128px 72px 55px 1fr;
+  grid-template-columns: 90px 38px 46px 128px 72px 55px 1fr;
   align-items: center;
   gap: 8px;
   font-size: 10px;
@@ -776,7 +776,7 @@ function render(d) {
         : 'color:var(--green);border-color:var(--green);';
       const dirLabel = isShort ? 'SHORT' : 'LONG';
       return `<div class="trade-row">
-        <span style="color:#00ff41;font-size:11px;font-family:monospace;">${utcTs}</span>
+        <span style="color:#00ff41;font-size:11px;font-family:monospace;white-space:nowrap;">${utcTs}</span>
         <span class="td-badge ${cls}">${win ? 'WIN' : 'LOSS'}</span>
         <span class="td-badge" style="${dirStyle}">${dirLabel}</span>
         <span class="dim">$${f2(t.entry_price)} → $${f2(t.exit_price)}</span>

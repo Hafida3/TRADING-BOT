@@ -663,8 +663,12 @@ def run():
                     telegram.send_trade("COVER", price, trade["size_usdc"],
                                         pnl=pnl, dry_run=config.DRY_RUN)
                 else:
-                    check = risk.check_trade("BUY", price, config.TRADE_AMOUNT_USDC,
-                                             current_tick=iteration)
+                    check = risk.check_trade(
+                        "BUY", price, config.TRADE_AMOUNT_USDC,
+                        current_tick=iteration,
+                        regime=regime_info.get("regime", "unknown"),
+                        macro_score=sig.macro_score,
+                    )
                     if check.approved:
                         log(f"  Executing BUY  size=${check.adjusted_size_usdc:.2f} USDC")
                         if not config.DRY_RUN and keypair:
@@ -683,6 +687,12 @@ def run():
                             risk.open_position(price, check.adjusted_size_usdc)
                             telegram.send_trade("BUY", price, check.adjusted_size_usdc,
                                                 dry_run=True, reason=sig.reason)
+                    elif check.reason.startswith("RULE_VETO:"):
+                        log(
+                            f"[RULE_VETO] LONG blocked | regime={regime_info.get('regime')} "
+                            f"macro={sig.macro_score:.3f} composite={sig.score:.3f} "
+                            f"LLM={sig.action}"
+                        )
                     else:
                         log(f"  BUY blocked: {check.reason}")
 

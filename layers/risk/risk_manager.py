@@ -71,6 +71,8 @@ class RiskManager:
     def check_trade(
         self, action: str, price: float, requested_usdc: float,
         current_tick: Optional[int] = None,
+        regime: str = "unknown",
+        macro_score: Optional[float] = None,
     ) -> RiskCheck:
         if action == "BUY":
             if self.position:
@@ -82,6 +84,9 @@ class RiskManager:
                     and current_tick - self.last_trade_tick < config.REVERSAL_COOLDOWN_TICKS):
                 left = config.REVERSAL_COOLDOWN_TICKS - (current_tick - self.last_trade_tick)
                 return RiskCheck(False, f"Reversal cooldown: {left} tick(s) remaining after short close")
+
+            if regime == "ranging" and macro_score is not None and macro_score < 0.50:
+                return RiskCheck(False, "RULE_VETO: no LONG in ranging+bearish macro")
 
             dd = self.drawdown(price)
             if dd >= config.MAX_DRAWDOWN_PCT:

@@ -230,6 +230,8 @@ html, body {
 #trades-scroll { flex: 1; overflow-y: auto; margin-top: 4px; }
 #trades-scroll::-webkit-scrollbar { width: 3px; }
 #trades-scroll::-webkit-scrollbar-thumb { background: var(--green-border); }
+#llm-text::-webkit-scrollbar { width: 3px; }
+#llm-text::-webkit-scrollbar-thumb { background: var(--green-border); }
 
 .trade-row {
   display: grid;
@@ -438,12 +440,12 @@ html, body {
   <div class="splitter" data-target="sigs-row" data-min="40"></div>
 
   <!-- LLM Reasoning panel -->
-  <div class="panel" id="llm-row" style="padding:5px 12px;overflow:hidden;">
-    <div style="display:flex;align-items:center;gap:8px;">
+  <div class="panel" id="llm-row" style="padding:5px 12px;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-bottom:4px;">
       <span class="plabel" style="margin:0;flex-shrink:0;">LLM REASONING</span>
       <span id="llm-badge" class="chip" style="font-size:8px;padding:0 5px;display:none;flex-shrink:0;"></span>
-      <span id="llm-text" style="font-size:10px;color:var(--green-dim);letter-spacing:.3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">—</span>
     </div>
+    <div id="llm-text" style="font-size:13px;color:var(--green-dim);letter-spacing:.2px;line-height:1.55;overflow-y:auto;flex:1;white-space:pre-wrap;word-break:break-word;min-height:0;">—</div>
   </div>
   <div class="splitter" data-target="llm-row" data-min="24"></div>
 
@@ -563,6 +565,19 @@ function setBar(id, frac) {
 
 // MACD histogram → 0..1 via tanh
 function macdNorm(h) { return 0.5 + Math.tanh((h ?? 0) * 8) * 0.5; }
+
+// ── LLM markdown renderer ─────────────────────────────────────
+function renderLlmMarkdown(text) {
+  if (!text) return '—';
+  const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return esc
+    .replace(/^### (.+)$/gm, '<span style="color:var(--green);font-weight:bold;letter-spacing:.5px;">$1</span>')
+    .replace(/^## (.+)$/gm, '<span style="color:var(--green);font-weight:bold;font-size:14px;letter-spacing:.8px;">$1</span>')
+    .replace(/^# (.+)$/gm, '<span style="color:var(--green);font-weight:bold;font-size:15px;letter-spacing:1px;">$1</span>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong style="color:var(--green);">$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em style="color:rgba(0,255,65,0.75);">$1</em>')
+    .replace(/\n/g, '<br>');
+}
 
 // ── Render ────────────────────────────────────────────────────
 function render(d) {
@@ -824,7 +839,7 @@ function render(d) {
   const llmBadge = $('llm-badge');
   const llmText  = $('llm-text');
   if (d.llm_reasoning) {
-    llmText.textContent = d.llm_reasoning;
+    llmText.innerHTML = renderLlmMarkdown(d.llm_reasoning);
     llmBadge.style.display = 'inline';
     if (d.llm_used) {
       llmBadge.textContent      = 'GROQ';
@@ -836,7 +851,7 @@ function render(d) {
       llmBadge.style.borderColor = 'var(--yellow)';
     }
   } else {
-    llmText.textContent    = '—';
+    llmText.innerHTML      = '—';
     llmBadge.style.display = 'none';
   }
 

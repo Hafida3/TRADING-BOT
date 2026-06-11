@@ -62,6 +62,7 @@ class Signal:
     reason:               str            # compact score breakdown for logs
     reasoning:            str  = ""      # LLM natural-language explanation
     llm_used:             bool = False
+    llm_source:           str  = ""     # "claude" | "groq" | "fallback"
     weights_used:         dict[str, float] = field(default_factory=dict)
 
 
@@ -411,7 +412,7 @@ def generate_signal(
             ma_score=ma_score, stoch_score=stoch_score, bb_score=bb_score,
             fear_greed_score=fear_greed_raw, fear_greed_label=fear_greed_label,
             reason=score_reason, reasoning=reasoning,
-            llm_used=True, weights_used=eff_weights,
+            llm_used=True, llm_source="claude", weights_used=eff_weights,
         )
 
     # Step 5: Groq (secondary)
@@ -450,7 +451,7 @@ def generate_signal(
             ma_score=ma_score, stoch_score=stoch_score, bb_score=bb_score,
             fear_greed_score=fear_greed_raw, fear_greed_label=fear_greed_label,
             reason=score_reason, reasoning=reasoning,
-            llm_used=True, weights_used=eff_weights,
+            llm_used=True, llm_source="groq", weights_used=eff_weights,
         )
 
     # Step 6: weighted score fallback
@@ -464,5 +465,5 @@ def generate_signal(
         fear_greed_score=fear_greed_raw, fear_greed_label=fear_greed_label,
         reason=score_reason,
         reasoning=f"LLMs unavailable — composite={composite:.3f}, regime={regime}.",
-        llm_used=False, weights_used=eff_weights,
+        llm_used=False, llm_source="fallback", weights_used=eff_weights,
     )

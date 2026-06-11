@@ -841,13 +841,18 @@ function render(d) {
   if (d.llm_reasoning) {
     llmText.innerHTML = renderLlmMarkdown(d.llm_reasoning);
     llmBadge.style.display = 'inline';
-    if (d.llm_used) {
-      llmBadge.textContent      = 'GROQ';
-      llmBadge.style.color      = 'var(--green)';
+    const src = (d.llm_source || (d.llm_used ? 'claude' : 'fallback')).toLowerCase();
+    if (src === 'claude') {
+      llmBadge.textContent       = 'CLAUDE';
+      llmBadge.style.color       = 'var(--green)';
       llmBadge.style.borderColor = 'var(--green)';
+    } else if (src === 'groq') {
+      llmBadge.textContent       = 'GROQ';
+      llmBadge.style.color       = '#a78bfa';
+      llmBadge.style.borderColor = '#a78bfa';
     } else {
-      llmBadge.textContent      = 'FALLBACK';
-      llmBadge.style.color      = 'var(--yellow)';
+      llmBadge.textContent       = 'FALLBACK';
+      llmBadge.style.color       = 'var(--yellow)';
       llmBadge.style.borderColor = 'var(--yellow)';
     }
   } else {

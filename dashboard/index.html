@@ -1573,6 +1573,7 @@ function initRpulse() {
       svgEl.setAttribute('width',   '110');
       svgEl.removeAttribute('height');
       svgEl.style.cssText = 'display:block;position:relative;z-index:3;';
+      svgEl.querySelectorAll('title').forEach(el => el.remove());
       const st = doc.createElementNS('http://www.w3.org/2000/svg', 'style');
       st.textContent = '.iris { transition: transform 0.15s ease-out; }';
       svgEl.insertBefore(st, svgEl.firstChild);

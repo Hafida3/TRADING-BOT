@@ -414,6 +414,7 @@ html, body {
 
     <div class="panel" id="sig-center">
       <div class="sig-badge HOLD" id="sig-badge">HOLD</div>
+      <div id="gate-block" style="display:none;text-align:center;border:1px solid rgba(255,170,0,0.50);padding:5px 14px;"></div>
       <div id="score-line">SCORE: <span id="score-num">—</span></div>
       <div id="regime-line">REGIME: <span id="regime-val">—</span></div>
       <div class="comp-wrap">
@@ -717,6 +718,30 @@ function render(d) {
   const badge = $('sig-badge');
   badge.textContent = sig;
   badge.className   = 'sig-badge ' + sig;
+
+  // Gate-block tag — shown when LLM wanted BUY/SELL but a gate overrode to HOLD
+  const gateEl      = $('gate-block');
+  const rawLlmAct   = extractLlmAction(d.llm_reasoning); // no d.signal fallback
+  const gateBlocked = sig === 'HOLD' && rawLlmAct && rawLlmAct !== 'HOLD' && d.llm_reasoning;
+  if (gateEl) {
+    if (gateBlocked) {
+      let headline, detail;
+      if (d.llm_reasoning.includes('RULE_VETO')) {
+        headline = 'DENIED BY THE ARCHITECT';
+        detail   = 'no LONG in ranging + macro < 0.50';
+      } else {
+        headline = 'THE DOOR IS LOCKED, NEO';
+        const sc = (d.signal_score ?? 0).toFixed(3);
+        detail   = rawLlmAct === 'BUY' ? 'score ' + sc + ' < 0.62' : 'score ' + sc + ' > 0.38';
+      }
+      gateEl.innerHTML =
+        '<div style="color:var(--yellow);font-size:9px;letter-spacing:1.5px;font-weight:bold;">' + headline + '</div>' +
+        '<div style="color:rgba(255,170,0,0.55);font-size:8px;margin-top:2px;letter-spacing:.5px;">' + detail + '</div>';
+      gateEl.style.display = 'block';
+    } else {
+      gateEl.style.display = 'none';
+    }
+  }
 
   // Composite score
   const score = d.signal_score ?? 0.5;

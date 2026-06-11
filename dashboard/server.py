@@ -27,6 +27,8 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
             self._serve_stats()
         elif self.path.startswith("/api/trades"):
             self._serve_trades()
+        elif self.path.startswith("/api/agent-state"):
+            self._serve_agent_state()
         else:
             super().do_GET()
 
@@ -100,6 +102,53 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
             self.send_response(500)
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(exc)}).encode())
+
+    def _serve_agent_state(self):
+        import sqlite3, time
+        result = {
+            "healthy": False,
+            "regime": "unknown",
+            "no_long_active": False,
+            "position_open": False,
+            "recent_tune": False,
+        }
+        try:
+            db_path = _DATA_JSON.parent / "trading_bot.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT timestamp, regime, macro FROM signal_history ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            conn.close()
+            if row:
+                result["healthy"] = (time.time() - float(row["timestamp"] or 0)) < 600
+                result["regime"] = row["regime"] or "unknown"
+                result["no_long_active"] = (
+                    (row["regime"] or "") == "ranging" and
+                    float(row["macro"] or 0) < 0.50
+                )
+        except Exception:
+            pass
+        try:
+            data = json.loads(_DATA_JSON.read_text(encoding="utf-8"))
+            pos = data.get("position") or {}
+            result["position_open"] = bool(pos.get("entry_price"))
+        except Exception:
+            pass
+        try:
+            cp = _DATA_JSON.parent / "tune_cooldowns.json"
+            if cp.exists():
+                cd = json.loads(cp.read_text(encoding="utf-8"))
+                result["recent_tune"] = any(float(v) > time.time() - 1800 for v in cd.values())
+        except Exception:
+            pass
+        payload = json.dumps(result).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(payload)
 
     def log_message(self, fmt, *args):  # suppress access logs
         pass

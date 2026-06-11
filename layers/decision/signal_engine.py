@@ -172,7 +172,7 @@ def _call_claude(
         content = msg.content[0].text.strip()
         m = re.search(r'\b(BUY|SELL|HOLD)\b', content.upper())
         action = m.group(1) if m else "HOLD"
-        return action, content[:2000]
+        return action, content[:4000]
     except Exception as exc:
         print(f"[Claude] Error: {exc}")
         return None
@@ -285,7 +285,7 @@ Reply ONLY with JSON: {{"action":"BUY"|"SELL"|"HOLD","confidence":0.0-1.0,"reaso
         if action not in ("BUY", "SELL", "HOLD"):
             action = "HOLD"
         confidence = max(0.0, min(1.0, float(parsed.get("confidence", 0.5))))
-        reasoning  = str(parsed.get("reasoning", "")).strip()[:2000]
+        reasoning  = str(parsed.get("reasoning", "")).strip()[:4000]
         return action, confidence, reasoning
 
     except Exception as exc:

@@ -74,11 +74,35 @@ html, body {
 /* ── Header ─────────────────────────────────────────────── */
 #hdr {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   border-bottom: 1px solid var(--green-border);
   padding-bottom: 6px;
   flex-shrink: 0;
+}
+
+/* ── Oracle avatar ──────────────────────────────────────── */
+#oracle-wrap {
+  width: 100px;
+  flex-shrink: 0;
+  position: relative;
+  cursor: default;
+  margin-left: 10px;
+}
+#oracle-wrap svg { display: block; width: 100%; overflow: visible; }
+#oracle-tooltip {
+  display: none;
+  position: absolute;
+  top: 0; right: 108px;
+  background: rgba(0,18,4,0.96);
+  border: 1px solid rgba(0,255,65,0.3);
+  padding: 8px 12px;
+  font: 10px/1.7 'Courier New',monospace;
+  color: var(--green-dim);
+  white-space: nowrap;
+  z-index: 20;
+  pointer-events: none;
+  letter-spacing: .5px;
 }
 
 #hdr-title {
@@ -334,6 +358,9 @@ html, body {
       <span>ITER: <span id="hdr-iter">—</span></span>
       <span id="hdr-clock" style="letter-spacing:1px;">—</span>
       <span id="hdr-ts">—</span>
+    </div>
+    <div id="oracle-wrap">
+      <div id="oracle-tooltip"></div>
     </div>
   </div>
 
@@ -1312,8 +1339,103 @@ function initSplitters() {
   });
 }
 
+// ── Oracle Avatar ─────────────────────────────────────────────
+let _oracleState = null;
+
+function loadOracleAvatar() {
+  fetch('/static/oracle_avatar.svg')
+    .then(r => r.text())
+    .then(svgText => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(svgText, 'image/svg+xml');
+      const svgEl = doc.documentElement;
+      svgEl.setAttribute('viewBox', '115 36 285 370');
+      svgEl.setAttribute('width', '100');
+      svgEl.removeAttribute('height');
+      // add iris transition without modifying the source file
+      const styleEl = doc.createElementNS('http://www.w3.org/2000/svg', 'style');
+      styleEl.textContent = '.iris { transition: transform 0.12s ease-out; }';
+      svgEl.insertBefore(styleEl, svgEl.firstChild);
+      const wrap = $('oracle-wrap');
+      if (wrap) {
+        const tooltip = $('oracle-tooltip');
+        wrap.insertBefore(svgEl, tooltip);
+      }
+    })
+    .catch(() => {});
+}
+
+function updateOracleTooltip(state) {
+  const tip = $('oracle-tooltip');
+  if (!tip) return;
+  const pos   = state.position_open ? 'LONG OPEN' : 'no position';
+  const tune  = state.recent_tune   ? 'TUNE active (&lt;30m)' : 'no recent TUNE';
+  const health = state.healthy ? '<span style="color:var(--green)">OK</span>' : '<span style="color:#E24B4A">STALE</span>';
+  tip.innerHTML =
+    '<div><span style="color:rgba(0,255,65,0.55)">REGIME &nbsp;</span>'   + (state.regime || 'unknown').toUpperCase() + '</div>' +
+    '<div><span style="color:rgba(0,255,65,0.55)">POSITION </span>'       + pos + '</div>' +
+    '<div><span style="color:rgba(0,255,65,0.55)">TUNE &nbsp;&nbsp;</span>' + tune + '</div>' +
+    '<div><span style="color:rgba(0,255,65,0.55)">STATUS &nbsp;</span>'   + health + '</div>';
+}
+
+function applyOracleClasses(state) {
+  const avatar = document.getElementById('oracle-avatar');
+  if (!avatar) return;
+  avatar.classList.remove('state-warn', 'state-error');
+  if (!state.healthy) {
+    avatar.classList.add('state-error');
+  } else if (state.regime === 'ranging' || state.no_long_active) {
+    avatar.classList.add('state-warn');
+  }
+  avatar.classList.toggle('position-open', !!state.position_open);
+  avatar.classList.toggle('tune-active',   !!state.recent_tune);
+}
+
+function pollAgentState() {
+  fetch('/api/agent-state')
+    .then(r => r.json())
+    .then(state => {
+      _oracleState = state;
+      applyOracleClasses(state);
+      updateOracleTooltip(state);
+    })
+    .catch(() => {});
+  setTimeout(pollAgentState, 10000);
+}
+
+// iris tracks mouse cursor (subtle, max 2.5 SVG units)
+document.addEventListener('mousemove', e => {
+  const svgEl = document.getElementById('oracle-avatar');
+  if (!svgEl) return;
+  const rect = svgEl.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const svgX = 115 + (e.clientX - rect.left)  / rect.width  * 285;
+  const svgY = 36  + (e.clientY - rect.top)   / rect.height * 370;
+  const dx = svgX - 340, dy = svgY - 128;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  let tx = 0, ty = 0;
+  if (dist > 0) {
+    const s = Math.min(2.5, dist * 0.03) / dist;
+    tx = dx * s; ty = dy * s;
+  }
+  svgEl.querySelectorAll('.iris').forEach(iris => {
+    iris.setAttribute('transform', `translate(${tx.toFixed(2)},${ty.toFixed(2)})`);
+  });
+});
+
+// tooltip hover
+(function () {
+  const wrap = $('oracle-wrap');
+  if (!wrap) return;
+  const tip = $('oracle-tooltip');
+  wrap.addEventListener('mouseenter', () => { if (tip) tip.style.display = 'block'; });
+  wrap.addEventListener('mouseleave', () => { if (tip) tip.style.display = 'none';  });
+})();
+
 initSizes();
 initSplitters();
+loadOracleAvatar();
+pollAgentState();
 fetchData();
 loadPnlChart();
 load24hBadge();

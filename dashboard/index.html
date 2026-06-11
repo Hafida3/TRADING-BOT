@@ -107,6 +107,39 @@ html, body {
   min-width: 180px;
   box-shadow: 0 0 12px rgba(0,255,65,0.10);
 }
+/* ── R_Pulse visual effects ─────────────────────────────── */
+#rpulse-aura {
+  position: absolute;
+  width: 140px; height: 140px;
+  top: -35px; left: -15px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,255,65,0.22) 0%, transparent 70%);
+  filter: blur(10px);
+  pointer-events: none;
+  animation: rpulse-breathe 3s ease-in-out infinite;
+}
+#rpulse-flash {
+  position: absolute;
+  width: 160px; height: 160px;
+  top: -45px; left: -25px;
+  border-radius: 50%;
+  filter: blur(12px);
+  opacity: 0;
+  pointer-events: none;
+}
+#rpulse-energy {
+  position: absolute;
+  width: 130px; height: 130px;
+  top: -30px; left: -10px;
+  border-radius: 50%;
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+.no-energy-field #rpulse-energy { backdrop-filter: none; -webkit-backdrop-filter: none; }
+#rpulse-particles { position: fixed; inset: 0; pointer-events: none; z-index: 499; }
+@keyframes rpulse-breathe { 0%,100%{ opacity: 1; } 50%{ opacity: 0.30; } }
 
 #hdr-title {
   font-size: 15px;
@@ -1342,26 +1375,70 @@ function initSplitters() {
 }
 
 // ── R_Pulse drifting avatar ────────────────────────────────────
-let _latestData  = null;
-let _oracleState = null;
+let _latestData       = null;
+let _oracleState      = null;
+let _rpulseMotion     = { x: 0, y: 0, vx: 0, vy: 0 };
+let _rpulseAura       = null;
+let _rpulseFlashEl    = null;
+let _prevPositionOpen = false;
+let _particles        = [];
+let _particleCanvas   = null;
+let _lastSpawn        = 0;
+let _particleLastTs   = 0;
+const _KATAKANA       = 'アイウエオカキクケコサシスセソ'.split('');
+
+function _updateAura(state) {
+  if (!_rpulseAura) return;
+  let r, g, b, dur;
+  if (!state.healthy) {
+    r = 255; g = 0;   b = 64;  dur = '1s';
+  } else if (state.regime === 'ranging' || state.no_long_active) {
+    r = 255; g = 170; b = 0;   dur = '3s';
+  } else {
+    r = 0;   g = 255; b = 65;  dur = '3s';
+  }
+  _rpulseAura.style.background        = `radial-gradient(circle, rgba(${r},${g},${b},0.22) 0%, transparent 70%)`;
+  _rpulseAura.style.animationDuration = dur;
+}
+
+function _tradeFlash(pnl) {
+  if (!_rpulseFlashEl) return;
+  const clr = pnl > 0 ? 'rgba(0,255,65,0.85)' : 'rgba(255,0,64,0.85)';
+  _rpulseFlashEl.style.transition = 'none';
+  _rpulseFlashEl.style.background = `radial-gradient(circle, ${clr} 0%, transparent 65%)`;
+  _rpulseFlashEl.style.opacity    = '1';
+  void _rpulseFlashEl.offsetHeight;            // force reflow
+  _rpulseFlashEl.style.transition = 'opacity 0.8s ease-out';
+  _rpulseFlashEl.style.opacity    = '0';
+}
 
 function applyOracleClasses(state) {
   const avatar = document.getElementById('oracle-avatar');
-  if (!avatar) return;
-  avatar.classList.remove('state-warn', 'state-error');
-  if (!state.healthy) {
-    avatar.classList.add('state-error');
-  } else if (state.regime === 'ranging' || state.no_long_active) {
-    avatar.classList.add('state-warn');
+  if (avatar) {
+    avatar.classList.remove('state-warn', 'state-error');
+    if (!state.healthy) {
+      avatar.classList.add('state-error');
+    } else if (state.regime === 'ranging' || state.no_long_active) {
+      avatar.classList.add('state-warn');
+    }
+    avatar.classList.toggle('position-open', !!state.position_open);
+    avatar.classList.toggle('tune-active',   !!state.recent_tune);
   }
-  avatar.classList.toggle('position-open', !!state.position_open);
-  avatar.classList.toggle('tune-active',   !!state.recent_tune);
+  _updateAura(state);
 }
 
 function pollAgentState() {
   fetch('/api/agent-state')
     .then(r => r.json())
-    .then(state => { _oracleState = state; applyOracleClasses(state); })
+    .then(state => {
+      const wasOpen     = _prevPositionOpen;
+      _oracleState      = state;
+      _prevPositionOpen = !!state.position_open;
+      applyOracleClasses(state);
+      if (wasOpen && !state.position_open) {
+        _tradeFlash(state.last_trade_pnl ?? 0);
+      }
+    })
     .catch(() => {});
   setTimeout(pollAgentState, 10000);
 }
@@ -1406,7 +1483,7 @@ function _startRpulseDrift(wrap) {
   function frame(now) {
     const dt     = Math.min(50, now - lastTs);
     lastTs       = now;
-    const frames = dt * 60 / 1000; // normalize to 60fps units
+    const frames = dt * 60 / 1000;
 
     x += vx * frames;
     y += vy * frames;
@@ -1418,12 +1495,71 @@ function _startRpulseDrift(wrap) {
     if (y <= 0)      { y = 0;     vy =  Math.abs(vy); }
     if (y >= H - SH) { y = H-SH;  vy = -Math.abs(vy); }
 
+    // expose for particle trail
+    _rpulseMotion.x = x;  _rpulseMotion.y = y;
+    _rpulseMotion.vx = vx; _rpulseMotion.vy = vy;
+
     wrap.style.left = x.toFixed(1) + 'px';
     wrap.style.top  = (y + Math.sin(bobPhase) * 4).toFixed(1) + 'px';
 
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+}
+
+function _initParticleCanvas() {
+  const c = document.createElement('canvas');
+  c.id = 'rpulse-particles';
+  c.width  = window.innerWidth;
+  c.height = window.innerHeight;
+  document.body.appendChild(c);
+  window.addEventListener('resize', () => { c.width = window.innerWidth; c.height = window.innerHeight; });
+  return c;
+}
+
+function _particleLoop(now) {
+  const dt = Math.min(50, now - (_particleLastTs || now));
+  _particleLastTs = now;
+
+  if (document.hidden) { requestAnimationFrame(_particleLoop); return; }
+
+  const c = _particleCanvas;
+  if (!c) { requestAnimationFrame(_particleLoop); return; }
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+
+  // spawn ~3 per second
+  if (_particles.length < 60 && now - _lastSpawn > 333) {
+    const spd = Math.hypot(_rpulseMotion.vx, _rpulseMotion.vy) || 0.001;
+    const ox  = -(_rpulseMotion.vx / spd) * 15;
+    const oy  = -(_rpulseMotion.vy / spd) * 10;
+    _particles.push({
+      x:    _rpulseMotion.x + 55 + ox + (Math.random() - 0.5) * 22,
+      y:    _rpulseMotion.y + 72 + oy + (Math.random() - 0.5) * 14,
+      char: _KATAKANA[Math.floor(Math.random() * _KATAKANA.length)],
+      vy:   0.35 + Math.random() * 0.70,
+      born: now,
+      life: 1800 + Math.random() * 400,
+    });
+    _lastSpawn = now;
+  }
+
+  ctx.font = '12px Courier New';
+  let i = _particles.length;
+  while (i--) {
+    const p = _particles[i];
+    const age = now - p.born;
+    if (age >= p.life) { _particles.splice(i, 1); continue; }
+    p.y += p.vy * dt / 16.67;
+    const alpha  = Math.max(0, 1 - age / p.life);
+    const bright = Math.random() > 0.96;
+    ctx.fillStyle = bright
+      ? `rgba(175,255,191,${alpha.toFixed(3)})`
+      : `rgba(0,255,65,${alpha.toFixed(3)})`;
+    ctx.fillText(p.char, p.x, p.y);
+  }
+
+  requestAnimationFrame(_particleLoop);
 }
 
 function initRpulse() {
@@ -1436,10 +1572,21 @@ function initRpulse() {
       svgEl.setAttribute('viewBox', '115 36 285 370');
       svgEl.setAttribute('width',   '110');
       svgEl.removeAttribute('height');
-      svgEl.style.cssText = 'display:block;';
+      svgEl.style.cssText = 'display:block;position:relative;z-index:3;';
       const st = doc.createElementNS('http://www.w3.org/2000/svg', 'style');
       st.textContent = '.iris { transition: transform 0.15s ease-out; }';
       svgEl.insertBefore(st, svgEl.firstChild);
+
+      const aura = document.createElement('div');
+      aura.id = 'rpulse-aura';
+      _rpulseAura = aura;
+
+      const flashEl = document.createElement('div');
+      flashEl.id = 'rpulse-flash';
+      _rpulseFlashEl = flashEl;
+
+      const energy = document.createElement('div');
+      energy.id = 'rpulse-energy';
 
       const bubble = document.createElement('div');
       bubble.id = 'rpulse-bubble';
@@ -1447,6 +1594,10 @@ function initRpulse() {
 
       const wrap = document.createElement('div');
       wrap.id = 'rpulse-wrap';
+      // order: aura → flash → energy → SVG → bubble
+      wrap.appendChild(aura);
+      wrap.appendChild(flashEl);
+      wrap.appendChild(energy);
       wrap.appendChild(svgEl);
       wrap.appendChild(bubble);
       document.body.appendChild(wrap);
@@ -1467,6 +1618,8 @@ function initRpulse() {
         bubble.style.display = 'none';
       });
 
+      _particleCanvas = _initParticleCanvas();
+      requestAnimationFrame(_particleLoop);
       _startRpulseDrift(wrap);
     })
     .catch(() => {});

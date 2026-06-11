@@ -142,6 +142,19 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
                 result["recent_tune"] = any(float(v) > time.time() - 1800 for v in cd.values())
         except Exception:
             pass
+        result["last_trade_pnl"] = 0.0
+        try:
+            db_path2 = _DATA_JSON.parent / "trading_bot.db"
+            conn2 = sqlite3.connect(str(db_path2))
+            conn2.row_factory = sqlite3.Row
+            trow = conn2.execute(
+                "SELECT COALESCE(net_pnl, pnl_usdc, 0) AS pnl FROM trades ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            conn2.close()
+            if trow:
+                result["last_trade_pnl"] = float(trow["pnl"])
+        except Exception:
+            pass
         payload = json.dumps(result).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

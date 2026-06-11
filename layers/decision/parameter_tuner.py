@@ -2,17 +2,26 @@
 Self-tuning: allows the LLM to adjust trading parameters within safe bounds.
 Changes are written to .env, applied to the live config object immediately
 (no restart required), and logged to memory.md.
+
+Per-key cooldown: a parameter cannot be changed again within TUNE_COOLDOWN_HOURS
+of its last change. Cooldown state is persisted to a JSON file so it survives
+restarts. Rejected directives are logged with [TUNE_COOLDOWN].
 """
 
+import json
 import os
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import config
 
-_ENV_PATH    = Path(__file__).parent.parent.parent / ".env"
-_MEMORY_PATH = Path(__file__).parent.parent.parent / "memory.md"
+_ENV_PATH      = Path(__file__).parent.parent.parent / ".env"
+_MEMORY_PATH   = Path(__file__).parent.parent.parent / "memory.md"
+_COOLDOWN_PATH = Path(__file__).parent.parent.parent / "tune_cooldowns.json"
+
+TUNE_COOLDOWN_HOURS = 6
 
 SAFE_BOUNDS: dict[str, tuple[float, float]] = {
     "BUY_THRESHOLD":   (0.42, 0.65),
@@ -24,9 +33,40 @@ SAFE_BOUNDS: dict[str, tuple[float, float]] = {
 ALLOWED_PARAMS = set(SAFE_BOUNDS)
 
 
+# ── Cooldown persistence ───────────────────────────────────────────────────────
+
+def _load_cooldowns() -> dict[str, float]:
+    """Return {key: last_change_unix_timestamp}. Returns {} on any read error."""
+    try:
+        if _COOLDOWN_PATH.exists():
+            return json.loads(_COOLDOWN_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_cooldowns(state: dict[str, float]) -> None:
+    try:
+        _COOLDOWN_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    except Exception as exc:
+        print(f"[Tuner] cooldown save failed: {exc}")
+
+
+def _cooldown_remaining(key: str, state: dict[str, float]) -> float:
+    """Seconds remaining on cooldown for key, or 0.0 if not in cooldown."""
+    last = state.get(key)
+    if last is None:
+        return 0.0
+    elapsed = time.time() - last
+    remaining = TUNE_COOLDOWN_HOURS * 3600 - elapsed
+    return max(0.0, remaining)
+
+
+# ── Public API ─────────────────────────────────────────────────────────────────
+
 def update_parameter(key: str, value: float, reason: str) -> tuple[bool, str]:
     """
-    Validate, persist to .env, apply to live config, log to memory.md.
+    Validate, check cooldown, persist to .env, apply to live config, log to memory.md.
     Returns (success, message).
     """
     if key not in ALLOWED_PARAMS:
@@ -40,6 +80,19 @@ def update_parameter(key: str, value: float, reason: str) -> tuple[bool, str]:
     if old_val == value:
         return False, f"TUNE skipped: {key} already {value}"
 
+    # Cooldown check
+    cooldowns = _load_cooldowns()
+    remaining = _cooldown_remaining(key, cooldowns)
+    if remaining > 0:
+        hours_left = remaining / 3600
+        msg = (
+            f"[TUNE_COOLDOWN] {key} {old_val} → {value} REJECTED "
+            f"— cooldown {hours_left:.1f}h remaining "
+            f"(last change: {datetime.fromtimestamp(cooldowns[key], tz=timezone.utc).strftime('%H:%M UTC')})"
+        )
+        print(msg)
+        return False, msg
+
     try:
         _write_env(key, value)
     except Exception as exc:
@@ -48,6 +101,10 @@ def update_parameter(key: str, value: float, reason: str) -> tuple[bool, str]:
     # Apply immediately — no restart needed
     os.environ[key] = str(value)
     setattr(config, key, float(value))
+
+    # Record timestamp for this key's cooldown
+    cooldowns[key] = time.time()
+    _save_cooldowns(cooldowns)
 
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     entry = f"- **[TUNE {date_str}]** {key}: {old_val} → {value} | {reason}\n"

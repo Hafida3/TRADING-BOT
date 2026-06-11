@@ -61,3 +61,5 @@ _Appended automatically after every closed position._
 - **2026-06-10 05:33 UTC**: LONG at $64.19 → LOSS (exit $64.09, PnL $-0.02). Signals: RSI=35.2, PM=0.13, F&G=9. Lesson: Stop triggered in ranging regime from $64.19; await stronger signal alignment before next entry.
 
 - **2026-06-10**: Fee simulation activated (0.15% per side / 0.30% round trip, applied to both strategy trades and grid trades). Fees deducted from USDC at close: fee = (entry_notional + exit_notional) × 0.0015; net_pnl stored alongside gross_pnl in DB. Trades before this point have no fees deducted — PnL comparison across this boundary is not apples-to-apples.
+
+- **2026-06-11**: TUNE cooldown added (6h per key) after observing STOP_LOSS_PCT oscillating 0.010↔0.012 five times in 28h — tuner was reacting to each loss streak without memory of its own prior changes. Mechanism guardrail, not a strategy change. All thresholds, gates and decision logic remain frozen. Cooldown state persisted in tune_cooldowns.json (survives restarts).

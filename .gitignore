@@ -1,5 +1,6 @@
 .env
 trading_bot.db
+tune_cooldowns.json
 __pycache__/
 *.pyc
 *.log

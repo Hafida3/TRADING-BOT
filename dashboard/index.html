@@ -532,7 +532,7 @@ html, body {
       <span id="llm-badge" class="chip" style="font-size:8px;padding:0 5px;display:none;flex-shrink:0;"></span>
       <span id="llm-action-badge" class="chip" style="font-size:9px;padding:1px 6px;display:none;flex-shrink:0;font-weight:bold;letter-spacing:1.5px;"></span>
     </div>
-    <div id="llm-flavor" style="font-size:9px;font-style:italic;color:rgba(0,255,65,0.38);letter-spacing:.4px;margin-bottom:4px;flex-shrink:0;display:none;"></div>
+    <div id="llm-flavor" style="font-size:9px;font-style:italic;color:rgba(0,255,65,0.80);text-shadow:0 0 5px rgba(0,255,65,0.40);letter-spacing:.4px;margin-bottom:4px;flex-shrink:0;display:none;"></div>
     <div id="llm-text" style="font-size:13px;color:var(--green-dim);letter-spacing:.2px;line-height:1.55;overflow-y:auto;flex:1;white-space:pre-wrap;word-break:break-word;min-height:0;">—</div>
   </div>
   <div class="splitter" data-target="llm-row" data-min="24"></div>
@@ -708,7 +708,19 @@ const _PILL_HTML =
   '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#ff0040;margin:0 2px -1px 0;"></span>' +
   '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4455ff;margin:0 5px -1px 0;"></span>';
 
-const _TW = { el:null, pills:'', text:'', typed:0, key:'', charTimer:0, cursorTimer:0, cycleTimer:0 };
+const _TW = {
+  el: null, text: '', pills: '', typed: 0,
+  keyA: '', keyB: '',
+  lineA: { text: '', pills: '' },
+  lineB: { text: '', pills: '' },
+  phase: 0,  // 0 = Line A (decision state), 1 = Line B (memory state)
+  charTimer: 0, cursorTimer: 0, cycleTimer: 0,
+};
+
+function _twDelay(ch) {
+  if ('.…,'.includes(ch)) return 250 + Math.random() * 150;  // 250-400ms after punctuation
+  return 50 + Math.random() * 90;                             // 50-140ms normal
+}
 
 function _twClear() {
   clearTimeout(_TW.charTimer);
@@ -723,7 +735,6 @@ function _twRender() {
 }
 
 function _twDone() {
-  // cursor blinks for 2 s then hides; then schedule 30 s retype
   _TW.cursorTimer = setTimeout(() => {
     if (_TW.el) _TW.el.innerHTML = _TW.pills + _TW.text;
     _TW.cycleTimer = setTimeout(_twCycle, 30000);
@@ -734,7 +745,7 @@ function _twTick() {
   if (_TW.typed < _TW.text.length) {
     _TW.typed++;
     _twRender();
-    _TW.charTimer = setTimeout(_twTick, 35);
+    _TW.charTimer = setTimeout(_twTick, _twDelay(_TW.text[_TW.typed - 1]));
   } else {
     _twDone();
   }
@@ -742,22 +753,41 @@ function _twTick() {
 
 function _twCycle() {
   if (document.hidden) { _TW.cycleTimer = setTimeout(_twCycle, 2000); return; }
+  // Toggle phase: 0 (Line A) ↔ 1 (Line B)
+  const next = 1 - _TW.phase;
+  const line = next === 0 ? _TW.lineA : _TW.lineB;
+  if (!line.text) {
+    // No Line B yet (no trades) — stay at phase 0 and reschedule
+    _TW.cycleTimer = setTimeout(_twCycle, 30000);
+    return;
+  }
+  _TW.phase = next;
+  _TW.text  = line.text;
+  _TW.pills = line.pills;
   _TW.typed = 0;
   _twRender();
-  _TW.charTimer = setTimeout(_twTick, 35);
+  _TW.charTimer = setTimeout(_twTick, _twDelay(''));
 }
 
-function _twSet(text, pills, key) {
-  if (key === _TW.key && _TW.el) return;  // same sentence already running
+function _twSet(lineAText, lineAPills, lineAKey, lineBText, lineBPills, lineBKey) {
+  const aChanged = lineAKey !== _TW.keyA;
+  _TW.lineA = { text: lineAText, pills: lineAPills };
+  _TW.lineB = { text: lineBText || '', pills: lineBPills || '' };
+  _TW.keyA  = lineAKey;
+  _TW.keyB  = lineBKey || '';
+
+  if (!aChanged && _TW.el) return;  // Line A unchanged — let cycle run
+
+  // Line A changed — interrupt and retype A immediately, reset to phase 0
   _twClear();
-  _TW.pills = pills;
-  _TW.text  = text;
-  _TW.key   = key;
+  _TW.phase = 0;
+  _TW.text  = lineAText;
+  _TW.pills = lineAPills;
   _TW.typed = 0;
   _TW.el    = document.getElementById('no-pos-flavor');
   if (!_TW.el) return;
   _twRender();
-  _TW.charTimer = setTimeout(_twTick, 35);
+  _TW.charTimer = setTimeout(_twTick, _twDelay(''));
 }
 
 // ── Render ────────────────────────────────────────────────────
@@ -1007,20 +1037,22 @@ function render(d) {
     $('pos-data').style.display    = 'none';
     dirBadge.style.display         = 'none';
 
-    // Context-aware flavor text — driven by typewriter engine
+    // Context-aware flavor text — A/B alternating cycle (30 s per phase)
+    // Line A: live decision state  |  Line B: last trade memory
+    const flatTrades = Array.isArray(d.trades) ? d.trades : [];
+    const lastT = flatTrades.length > 0 ? flatTrades[flatTrades.length - 1] : null;
+    let lineAText, lineAPills, lineAKey, lineBText = '', lineBPills = '', lineBKey = '';
     if (gateBlocked) {
-      _twSet('The door is locked, Neo.', '', 'locked');
+      lineAText = 'The door is locked, Neo.'; lineAPills = ''; lineAKey = 'locked';
     } else {
-      const flatTrades = Array.isArray(d.trades) ? d.trades : [];
-      const lastT = flatTrades.length > 0 ? flatTrades[flatTrades.length - 1] : null;
-      if (lastT !== null) {
-        const won = (lastT.pnl_usdc ?? 0) >= 0;
-        _twSet(won ? 'He is beginning to believe.' : 'Everybody falls the first time.',
-               '', won ? 'believe' : 'falls');
-      } else {
-        _twSet('Red pill or blue pill… choosing.', _PILL_HTML, 'pills');
-      }
+      lineAText = 'Red pill or blue pill… choosing.'; lineAPills = _PILL_HTML; lineAKey = 'pills';
     }
+    if (lastT !== null) {
+      const won = (lastT.pnl_usdc ?? 0) >= 0;
+      lineBText = won ? 'He is beginning to believe.' : 'Everybody falls the first time.';
+      lineBKey  = won ? 'believe' : 'falls';
+    }
+    _twSet(lineAText, lineAPills, lineAKey, lineBText, lineBPills, lineBKey);
   }
 
   // Trades

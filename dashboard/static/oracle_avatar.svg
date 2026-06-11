@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="100 30 320 525" width="320" height="525" role="img" aria-label="Avatar Oracle - samourai feminine robotique" id="oracle-avatar">
+<title>Oracle Agent Avatar</title>
+<desc>Robot samourai feminine : dome ceramique avec taches de rousseur, bandeau rouge, katana violet. Etats pilotables via classes CSS sur l'element racine : state-warn, state-error, position-open, tune-active.</desc>
+<style>
+.led{fill:#1D9E75;stroke:#0F6E56;animation:breath 3s ease-in-out infinite}
+.state-warn .led{fill:#EF9F27;stroke:#854F0B}
+.state-error .led{fill:#E24B4A;stroke:#791F1F;animation:blink 1s steps(2) infinite}
+.blade{opacity:.25;transition:opacity .5s ease}
+.position-open .blade{opacity:1}
+.tune-active .iris{animation:irispulse 1.2s ease-in-out infinite}
+@keyframes breath{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes blink{50%{opacity:.2}}
+@keyframes irispulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion: reduce){.led,.iris{animation:none!important}}
+</style>
+
+<text x="118" y="90" font-family="monospace" font-size="11" fill="#1D9E75" opacity="0.35">0101</text>
+<text x="385" y="150" font-family="monospace" font-size="11" fill="#1D9E75" opacity="0.35">1011</text>
+<text x="130" y="430" font-family="monospace" font-size="11" fill="#1D9E75" opacity="0.3">1101</text>
+<text x="388" y="400" font-family="monospace" font-size="11" fill="#1D9E75" opacity="0.3">0110</text>
+
+<ellipse cx="340" cy="534" rx="85" ry="7" fill="#888780" opacity="0.18"/>
+
+<rect x="302" y="468" width="16" height="46" rx="8" fill="#C9CDD2" stroke="#5F5E5A" stroke-width="0.5"/>
+<rect x="362" y="468" width="16" height="46" rx="8" fill="#C9CDD2" stroke="#5F5E5A" stroke-width="0.5"/>
+<rect x="292" y="512" width="36" height="13" rx="6" fill="#1E2024"/>
+<rect x="352" y="512" width="36" height="13" rx="6" fill="#1E2024"/>
+
+<rect x="332" y="178" width="16" height="16" fill="#2B2E33"/>
+
+<path d="M296 204 C290 244 296 276 306 302 L374 302 C384 276 390 244 384 204 C368 192 312 192 296 204 Z" fill="#1E2024"/>
+
+<path d="M306 300 L374 300 C386 358 392 418 396 470 L344 470 L340 428 L336 470 L284 470 C288 418 294 358 306 300 Z" fill="#16181B"/>
+<line x1="340" y1="332" x2="340" y2="426" stroke="#2B2E33" stroke-width="1"/>
+
+<path d="M324 196 L340 230 L356 196 Z" fill="#E9E2D6"/>
+<path d="M320 195 L341 238 L334 242 L304 206 Z" fill="#14161A"/>
+<path d="M341 238 L334 242 L306 208 L312 204 Z" fill="#D85A30"/>
+<path d="M360 195 L339 238 L346 242 L376 206 Z" fill="#14161A"/>
+<path d="M339 238 L346 242 L374 208 L368 204 Z" fill="#D85A30"/>
+<rect x="330" y="246" width="20" height="12" rx="2" fill="#C9A227" stroke="#8A6D12" stroke-width="0.5"/>
+
+<rect x="302" y="298" width="76" height="26" rx="4" fill="#D85A30" stroke="#993C1D" stroke-width="0.5"/>
+<rect x="330" y="298" width="20" height="26" fill="#B84A22"/>
+
+<path d="M300 212 C288 240 278 268 268 296" stroke="#1E2024" stroke-width="16" stroke-linecap="round" fill="none"/>
+<path d="M268 296 C262 316 258 330 256 344" stroke="#2B2E33" stroke-width="12" stroke-linecap="round" fill="none"/>
+<path d="M380 212 C392 244 396 276 392 308" stroke="#1E2024" stroke-width="16" stroke-linecap="round" fill="none"/>
+<path d="M392 308 C390 326 386 340 382 352" stroke="#2B2E33" stroke-width="12" stroke-linecap="round" fill="none"/>
+<circle cx="382" cy="356" r="8" fill="#E9E2D6" stroke="#8A8478" stroke-width="0.5"/>
+
+<line x1="258" y1="352" x2="274" y2="380" stroke="#14161A" stroke-width="8" stroke-linecap="round"/>
+<line x1="262" y1="358" x2="266" y2="365" stroke="#D85A30" stroke-width="1.5"/>
+<line x1="266" y1="365" x2="270" y2="372" stroke="#A32D2D" stroke-width="1.5"/>
+<circle cx="252" cy="342" r="6" fill="#3A3E44" stroke="#5F5E5A" stroke-width="0.5"/>
+<g class="blade">
+<line x1="248" y1="336" x2="130" y2="154" stroke="#7F77DD" stroke-width="12" stroke-linecap="round" opacity="0.18"/>
+<line x1="248" y1="336" x2="130" y2="154" stroke="#AFA9EC" stroke-width="7" stroke-linecap="round" opacity="0.35"/>
+<line x1="248" y1="336" x2="130" y2="154" stroke="#CECBF6" stroke-width="3" stroke-linecap="round"/>
+<line x1="248" y1="336" x2="130" y2="154" stroke="#F4F1FF" stroke-width="1.2" stroke-linecap="round"/>
+<polygon points="130,154 124,142 136,148" fill="#CECBF6"/>
+</g>
+<circle cx="256" cy="348" r="8" fill="#E9E2D6" stroke="#8A8478" stroke-width="0.5"/>
+
+<rect x="294" y="122" width="7" height="18" rx="3.5" fill="#3A3E44"/>
+<rect x="379" y="122" width="7" height="18" rx="3.5" fill="#3A3E44"/>
+
+<path d="M300 115 C300 70 318 48 340 48 C362 48 380 70 380 115 C380 146 364 172 340 182 C316 172 300 146 300 115 Z" fill="#E9E2D6" stroke="#8A8478" stroke-width="0.5"/>
+
+<circle class="led" cx="340" cy="72" r="3.5" stroke-width="0.75"/>
+
+<path d="M302 92 C318 79 362 79 378 92 L378 110 C362 97 318 97 302 110 Z" fill="#A32D2D" stroke="#791F1F" stroke-width="0.5"/>
+<circle cx="380" cy="102" r="5" fill="#A32D2D" stroke="#791F1F" stroke-width="0.5"/>
+<path d="M382 106 C394 114 398 122 396 132 C390 122 384 112 378 108 Z" fill="#A32D2D"/>
+<path d="M384 104 C396 106 402 112 402 120 C396 113 388 108 380 106 Z" fill="#A32D2D"/>
+
+<path d="M312 118 Q322 113 332 118" stroke="#6B5A4A" stroke-width="1.2" fill="none"/>
+<path d="M348 118 Q358 113 368 118" stroke="#6B5A4A" stroke-width="1.2" fill="none"/>
+<ellipse cx="322" cy="128" rx="10" ry="6.5" fill="#2B2E33"/>
+<circle class="iris" cx="322" cy="128" r="4.2" fill="#EF9F27"/>
+<circle cx="322" cy="128" r="1.8" fill="#1E1206"/>
+<circle cx="320.5" cy="126.5" r="0.8" fill="#FFF7E0"/>
+<ellipse cx="358" cy="128" rx="10" ry="6.5" fill="#2B2E33"/>
+<circle class="iris" cx="358" cy="128" r="4.2" fill="#EF9F27"/>
+<circle cx="358" cy="128" r="1.8" fill="#1E1206"/>
+<circle cx="356.5" cy="126.5" r="0.8" fill="#FFF7E0"/>
+<line x1="311" y1="126" x2="307" y2="123" stroke="#2B2E33" stroke-width="1.2" stroke-linecap="round"/>
+<line x1="369" y1="126" x2="373" y2="123" stroke="#2B2E33" stroke-width="1.2" stroke-linecap="round"/>
+
+<ellipse cx="314" cy="146" rx="8" ry="4" fill="#F0A8A0" opacity="0.55"/>
+<ellipse cx="366" cy="146" rx="8" ry="4" fill="#F0A8A0" opacity="0.55"/>
+
+<circle cx="332" cy="141" r="1" fill="#C98A6B" opacity="0.8"/>
+<circle cx="340" cy="143" r="1" fill="#C98A6B" opacity="0.8"/>
+<circle cx="348" cy="141" r="1" fill="#C98A6B" opacity="0.8"/>
+<circle cx="336" cy="147" r="1" fill="#C98A6B" opacity="0.8"/>
+<circle cx="344" cy="147" r="1" fill="#C98A6B" opacity="0.8"/>
+<circle cx="326" cy="144" r="1" fill="#C98A6B" opacity="0.7"/>
+<circle cx="354" cy="144" r="1" fill="#C98A6B" opacity="0.7"/>
+<circle cx="317" cy="140" r="1" fill="#C98A6B" opacity="0.6"/>
+<circle cx="363" cy="140" r="1" fill="#C98A6B" opacity="0.6"/>
+
+<path d="M336 152 Q340 156 344 152" stroke="#8A8478" stroke-width="0.75" fill="none"/>
+<path d="M334 164 Q340 168 346 164" stroke="#C96A6A" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+</svg>

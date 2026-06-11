@@ -524,7 +524,10 @@ html, body {
 
     <div class="panel" style="display:flex;flex-direction:column;">
       <div class="plabel">OPEN POSITION &nbsp;<span id="pos-dir-badge" style="display:none;font-size:9px;padding:1px 6px;border:1px solid;letter-spacing:1px;font-weight:bold;"></span></div>
-      <div id="no-pos" class="empty-msg">NO OPEN POSITION</div>
+      <div id="no-pos" style="text-align:center;margin-top:6px;">
+        <div style="font-size:8px;letter-spacing:2px;color:rgba(0,255,65,0.25);margin-bottom:7px;">flat</div>
+        <div id="no-pos-flavor" style="font-size:11px;font-style:italic;color:rgba(0,255,65,0.38);line-height:1.65;font-family:'Courier New',monospace;"></div>
+      </div>
       <div id="pos-data" style="display:none;">
         <div id="pos-grid">
           <div class="pos-cell"><div class="cl">ENTRY</div>     <div class="cv" id="pos-entry">—</div></div>
@@ -926,6 +929,29 @@ function render(d) {
     $('no-pos').style.display      = 'block';
     $('pos-data').style.display    = 'none';
     dirBadge.style.display         = 'none';
+
+    // Context-aware flavor text
+    const flavorEl = $('no-pos-flavor');
+    if (flavorEl) {
+      let html;
+      if (gateBlocked) {
+        html = 'The door is locked, Neo.';
+      } else {
+        const flatTrades = Array.isArray(d.trades) ? d.trades : [];
+        const lastT = flatTrades.length > 0 ? flatTrades[flatTrades.length - 1] : null;
+        if (lastT !== null) {
+          html = (lastT.pnl_usdc ?? 0) >= 0
+            ? 'He is beginning to believe.'
+            : 'Everybody falls the first time.';
+        } else {
+          html =
+            '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#ff0040;margin:0 2px -1px 0;"></span>' +
+            '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4455ff;margin:0 5px -1px 0;"></span>' +
+            'Red pill or blue pill&#8230; choosing.';
+        }
+      }
+      flavorEl.innerHTML = html;
+    }
   }
 
   // Trades

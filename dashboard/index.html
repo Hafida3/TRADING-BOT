@@ -197,7 +197,7 @@ html, body {
   display: grid;
   grid-template-columns: repeat(9, 1fr);
   gap: 6px;
-  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .sig-card { display: flex; flex-direction: column; gap: 4px; }
@@ -212,8 +212,8 @@ html, body {
   display: grid;
   grid-template-columns: 265px 1fr;
   gap: 6px;
-  flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 #pos-grid {
@@ -264,9 +264,38 @@ html, body {
   letter-spacing: 1px;
 }
 
+/* ── Draggable splitters ────────────────────────────────── */
+.splitter {
+  height: 8px;
+  cursor: ns-resize;
+  flex-shrink: 0;
+  background: transparent;
+  border-top: 1px solid rgba(0,255,65,0.15);
+  border-bottom: 1px solid rgba(0,255,65,0.15);
+  position: relative;
+  transition: background 0.2s;
+}
+.splitter:hover, .splitter:active {
+  background: rgba(0,255,65,0.08);
+  border-color: rgba(0,255,65,0.45);
+}
+.splitter::before {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px; height: 2px;
+  background: rgba(0,255,65,0.35);
+  border-radius: 1px;
+}
+.splitter:hover::before {
+  background: rgba(0,255,65,0.7);
+  box-shadow: 0 0 4px rgba(0,255,65,0.5);
+}
+
 /* ── PnL chart panel ────────────────────────────────────── */
-#pnl-panel { flex-shrink: 0; }
-#pnlSvg    { display: block; width: 100%; height: 300px; }
+#pnl-panel { flex: 1; min-height: 80px; display: flex; flex-direction: column; overflow: hidden; }
+#pnlSvg    { display: block; width: 100%; height: 100%; }
 
 /* Utility */
 .pos   { color: var(--green)              !important; }
@@ -406,15 +435,17 @@ html, body {
     </div>
 
   </div>
+  <div class="splitter" data-target="sigs-row" data-min="40"></div>
 
   <!-- LLM Reasoning panel -->
-  <div class="panel" style="flex-shrink:0;padding:5px 12px;">
+  <div class="panel" id="llm-row" style="padding:5px 12px;overflow:hidden;">
     <div style="display:flex;align-items:center;gap:8px;">
       <span class="plabel" style="margin:0;flex-shrink:0;">LLM REASONING</span>
       <span id="llm-badge" class="chip" style="font-size:8px;padding:0 5px;display:none;flex-shrink:0;"></span>
       <span id="llm-text" style="font-size:10px;color:var(--green-dim);letter-spacing:.3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">—</span>
     </div>
   </div>
+  <div class="splitter" data-target="llm-row" data-min="24"></div>
 
   <!-- Bottom: position | trades -->
   <div id="bot-row">
@@ -441,9 +472,10 @@ html, body {
     </div>
 
   </div>
+  <div class="splitter" data-target="bot-row" data-min="80"></div>
 
   <!-- Grid Bot -->
-  <div class="panel" id="grid-row" style="flex-shrink:0;">
+  <div class="panel" id="grid-row" style="overflow:hidden;">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">
       <span class="plabel" style="margin:0;">GRID BOT</span>
       <span class="chip dry" style="font-size:8px;padding:1px 5px;">PAPER</span>
@@ -453,6 +485,7 @@ html, body {
       <div style="color:rgba(0,255,65,0.3);font-size:10px;">Initializing…</div>
     </div>
   </div>
+  <div class="splitter" data-target="grid-row" data-min="40"></div>
 
   <!-- PnL Curve -->
   <div class="panel" id="pnl-panel">
@@ -460,7 +493,7 @@ html, body {
       <span class="plabel" style="margin:0;">[ PNL_CURVE ]</span>
       <span id="pnl-summary" style="font-size:9px;color:var(--green-dim);letter-spacing:1px;"></span>
     </div>
-    <div style="position:relative;">
+    <div style="flex:1;min-height:0;position:relative;">
       <svg id="pnlSvg"></svg>
       <div id="pnl-tip" style="display:none;position:absolute;pointer-events:none;background:rgba(0,18,4,0.95);border:1px solid rgba(0,255,65,0.3);padding:6px 10px;font:11px/1.6 'Courier New',monospace;color:#00ff41;white-space:nowrap;z-index:10;border-radius:2px;"></div>
     </div>
@@ -840,7 +873,7 @@ function drawPnlSvg() {
   }
 
   const W  = Math.round(svg.getBoundingClientRect().width) || 800;
-  const H  = 300;
+  const H  = Math.max(80, Math.round(svg.getBoundingClientRect().height)) || 200;
   const ML = 55, MR = 15, MT = 15, MB = 30;
   const cW = W - ML - MR;
   const cH = H - MT - MB;
@@ -1111,6 +1144,59 @@ setInterval(() => {
   setTimeout(tickClock, 1000);
 })();
 
+// ── Resizable panels ─────────────────────────────────────────
+const SIZES_KEY = 'oracle-panel-heights-v1';
+const RESIZABLE = ['sigs-row', 'llm-row', 'bot-row', 'grid-row'];
+const MINS      = { 'sigs-row': 40, 'llm-row': 24, 'bot-row': 80, 'grid-row': 40 };
+
+function saveSizes() {
+  const obj = {};
+  RESIZABLE.forEach(id => { const el = $(id); if (el) obj[id] = el.offsetHeight; });
+  try { localStorage.setItem(SIZES_KEY, JSON.stringify(obj)); } catch (_) {}
+}
+
+function initSizes() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(SIZES_KEY) || '{}'); } catch (_) {}
+  RESIZABLE.forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    const h = saved[id] || el.offsetHeight || MINS[id];
+    el.style.flexShrink = '0';
+    el.style.height     = h + 'px';
+    el.style.overflow   = 'hidden';
+  });
+}
+
+function initSplitters() {
+  document.querySelectorAll('.splitter').forEach(sp => {
+    sp.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const targetId = sp.dataset.target;
+      const minH     = parseInt(sp.dataset.min || '40', 10);
+      const target   = $(targetId);
+      if (!target) return;
+      const startY = e.clientY;
+      const startH = target.offsetHeight;
+
+      function onMove(ev) {
+        const newH = Math.max(minH, startH + ev.clientY - startY);
+        target.style.height = newH + 'px';
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        saveSizes();
+        setTimeout(drawPnlSvg, 0);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+initSizes();
+initSplitters();
 fetchData();
 loadPnlChart();
 load24hBadge();

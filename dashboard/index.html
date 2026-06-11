@@ -886,8 +886,9 @@ function render(d) {
       llmBadge.textContent = 'FALLBACK'; llmBadge.style.color = 'var(--yellow)'; llmBadge.style.borderColor = 'var(--yellow)';
     }
 
-    // Action badge — extract and strip from body
-    const llmAction = extractLlmAction(d.llm_reasoning);
+    // Action badge — extract from text, fall back to d.signal (same value, Claude's decision)
+    const _extracted = extractLlmAction(d.llm_reasoning);
+    const llmAction  = _extracted || (['BUY','SELL','HOLD'].includes(d.signal) ? d.signal : null);
     if (llmAction) {
       const ac = llmAction === 'BUY' ? 'var(--green)' : llmAction === 'SELL' ? 'var(--red)' : 'var(--yellow)';
       llmActionBadge.textContent       = llmAction;

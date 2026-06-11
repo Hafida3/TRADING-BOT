@@ -375,6 +375,24 @@ html, body {
 
 .blink { animation: blink 1s step-end infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ── Flavor text neon ───────────────────────────────────── */
+.flavor-glow {
+  color: #00ff41;
+  font-size: 15px;
+  text-shadow: 0 0 6px rgba(0,255,65,0.8), 0 0 14px rgba(0,255,65,0.5);
+  animation: flavor-pulse 2.5s ease-in-out infinite;
+}
+.flavor-cursor { color: #00ff41; animation: flavor-blink 0.6s step-end infinite; }
+@keyframes flavor-pulse {
+  0%,100% { opacity:1;   text-shadow: 0 0 6px rgba(0,255,65,0.8), 0 0 14px rgba(0,255,65,0.5); }
+  50%     { opacity:.50; text-shadow: 0 0 3px rgba(0,255,65,0.3), 0 0 6px rgba(0,255,65,0.12); }
+}
+@keyframes flavor-blink { 0%,100%{opacity:1} 50%{opacity:0} }
+@keyframes gate-pulse {
+  0%,100% { opacity:1;   text-shadow: 0 0 6px rgba(255,170,0,0.75), 0 0 14px rgba(255,170,0,0.4); }
+  50%     { opacity:.50; text-shadow: 0 0 3px rgba(255,170,0,0.30), 0 0 6px rgba(255,170,0,0.12); }
+}
 </style>
 </head>
 <body>
@@ -526,7 +544,7 @@ html, body {
       <div class="plabel">OPEN POSITION &nbsp;<span id="pos-dir-badge" style="display:none;font-size:9px;padding:1px 6px;border:1px solid;letter-spacing:1px;font-weight:bold;"></span></div>
       <div id="no-pos" style="text-align:center;margin-top:6px;">
         <div style="font-size:8px;letter-spacing:2px;color:rgba(0,255,65,0.25);margin-bottom:7px;">flat</div>
-        <div id="no-pos-flavor" style="font-size:11px;font-style:italic;color:rgba(0,255,65,0.38);line-height:1.65;font-family:'Courier New',monospace;"></div>
+        <div id="no-pos-flavor" class="flavor-glow" style="font-style:italic;line-height:1.6;"></div>
       </div>
       <div id="pos-data" style="display:none;">
         <div id="pos-grid">
@@ -685,6 +703,63 @@ function renderLlmMarkdown(text) {
     .replace(/\n/g, '<br>');
 }
 
+// ── Flavor-text typewriter ────────────────────────────────────
+const _PILL_HTML =
+  '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#ff0040;margin:0 2px -1px 0;"></span>' +
+  '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4455ff;margin:0 5px -1px 0;"></span>';
+
+const _TW = { el:null, pills:'', text:'', typed:0, key:'', charTimer:0, cursorTimer:0, cycleTimer:0 };
+
+function _twClear() {
+  clearTimeout(_TW.charTimer);
+  clearTimeout(_TW.cursorTimer);
+  clearTimeout(_TW.cycleTimer);
+}
+
+function _twRender() {
+  if (!_TW.el) return;
+  _TW.el.innerHTML = _TW.pills + _TW.text.slice(0, _TW.typed) +
+    '<span class="flavor-cursor">█</span>';
+}
+
+function _twDone() {
+  // cursor blinks for 2 s then hides; then schedule 30 s retype
+  _TW.cursorTimer = setTimeout(() => {
+    if (_TW.el) _TW.el.innerHTML = _TW.pills + _TW.text;
+    _TW.cycleTimer = setTimeout(_twCycle, 30000);
+  }, 2000);
+}
+
+function _twTick() {
+  if (_TW.typed < _TW.text.length) {
+    _TW.typed++;
+    _twRender();
+    _TW.charTimer = setTimeout(_twTick, 35);
+  } else {
+    _twDone();
+  }
+}
+
+function _twCycle() {
+  if (document.hidden) { _TW.cycleTimer = setTimeout(_twCycle, 2000); return; }
+  _TW.typed = 0;
+  _twRender();
+  _TW.charTimer = setTimeout(_twTick, 35);
+}
+
+function _twSet(text, pills, key) {
+  if (key === _TW.key && _TW.el) return;  // same sentence already running
+  _twClear();
+  _TW.pills = pills;
+  _TW.text  = text;
+  _TW.key   = key;
+  _TW.typed = 0;
+  _TW.el    = document.getElementById('no-pos-flavor');
+  if (!_TW.el) return;
+  _twRender();
+  _TW.charTimer = setTimeout(_twTick, 35);
+}
+
 // ── Render ────────────────────────────────────────────────────
 function render(d) {
   _latestData = d;
@@ -738,7 +813,9 @@ function render(d) {
         detail   = rawLlmAct === 'BUY' ? 'score ' + sc + ' < 0.62' : 'score ' + sc + ' > 0.38';
       }
       gateEl.innerHTML =
-        '<div style="color:var(--yellow);font-size:9px;letter-spacing:1.5px;font-weight:bold;">' + headline + '</div>' +
+        '<div style="color:var(--yellow);font-size:10px;letter-spacing:1.5px;font-weight:bold;' +
+          'text-shadow:0 0 6px rgba(255,170,0,0.75),0 0 14px rgba(255,170,0,0.4);' +
+          'animation:gate-pulse 2.5s ease-in-out infinite;">' + headline + '</div>' +
         '<div style="color:rgba(255,170,0,0.55);font-size:8px;margin-top:2px;letter-spacing:.5px;">' + detail + '</div>';
       gateEl.style.display = 'block';
     } else {
@@ -930,27 +1007,19 @@ function render(d) {
     $('pos-data').style.display    = 'none';
     dirBadge.style.display         = 'none';
 
-    // Context-aware flavor text
-    const flavorEl = $('no-pos-flavor');
-    if (flavorEl) {
-      let html;
-      if (gateBlocked) {
-        html = 'The door is locked, Neo.';
+    // Context-aware flavor text — driven by typewriter engine
+    if (gateBlocked) {
+      _twSet('The door is locked, Neo.', '', 'locked');
+    } else {
+      const flatTrades = Array.isArray(d.trades) ? d.trades : [];
+      const lastT = flatTrades.length > 0 ? flatTrades[flatTrades.length - 1] : null;
+      if (lastT !== null) {
+        const won = (lastT.pnl_usdc ?? 0) >= 0;
+        _twSet(won ? 'He is beginning to believe.' : 'Everybody falls the first time.',
+               '', won ? 'believe' : 'falls');
       } else {
-        const flatTrades = Array.isArray(d.trades) ? d.trades : [];
-        const lastT = flatTrades.length > 0 ? flatTrades[flatTrades.length - 1] : null;
-        if (lastT !== null) {
-          html = (lastT.pnl_usdc ?? 0) >= 0
-            ? 'He is beginning to believe.'
-            : 'Everybody falls the first time.';
-        } else {
-          html =
-            '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#ff0040;margin:0 2px -1px 0;"></span>' +
-            '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4455ff;margin:0 5px -1px 0;"></span>' +
-            'Red pill or blue pill&#8230; choosing.';
-        }
+        _twSet('Red pill or blue pill… choosing.', _PILL_HTML, 'pills');
       }
-      flavorEl.innerHTML = html;
     }
   }
 

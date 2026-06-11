@@ -297,7 +297,14 @@ html, body {
 
 /* ── PnL chart panel ────────────────────────────────────── */
 #pnl-panel { flex: 1; min-height: 80px; display: flex; flex-direction: column; overflow: hidden; }
-#pnlSvg    { display: block; width: 100%; height: 100%; }
+#pnlSvg    { display: block; width: 100%; height: 100%; cursor: grab; }
+#pnlSvg.panning { cursor: grabbing; }
+#pnl-reset-btn {
+  margin-left: auto; background: none; border: 1px solid rgba(0,255,65,0.22);
+  color: rgba(0,255,65,0.40); font: 9px 'Courier New',monospace; cursor: pointer;
+  letter-spacing: 1px; padding: 2px 6px; flex-shrink: 0;
+}
+#pnl-reset-btn:hover { color: var(--green); border-color: var(--green); }
 
 /* Utility */
 .pos   { color: var(--green)              !important; }
@@ -496,6 +503,7 @@ html, body {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
       <span class="plabel" style="margin:0;">[ PNL_CURVE ]</span>
       <span id="pnl-summary" style="font-size:9px;color:var(--green-dim);letter-spacing:1px;"></span>
+      <button id="pnl-reset-btn" onclick="resetView()">⟳ RESET VIEW</button>
     </div>
     <div style="flex:1;min-height:0;position:relative;">
       <svg id="pnlSvg"></svg>
@@ -925,16 +933,26 @@ function render(d) {
 
 // ── PnL Curve (SVG) ───────────────────────────────────────────
 let _pnlTrades = [];
-let _pnlVals   = [];
+let _pnlVals   = [];   // full cumulative PnL (all trades)
 let _pnlXS     = null;
 let _pnlYS     = null;
 let _pnlMeta   = null;
+let _viewStart = 0;    // first visible trade index
+let _viewEnd   = null; // last visible trade index; null = all
+
+function resetView() {
+  _viewStart = 0;
+  _viewEnd   = null;
+  drawPnlSvg();
+}
 
 function loadPnlChart() {
   fetch('/api/trades?_=' + Date.now())
     .then(r => r.json())
     .then(trades => {
+      const wasEmpty = _pnlTrades.length === 0;
       _pnlTrades = Array.isArray(trades) ? trades : [];
+      if (wasEmpty) { _viewStart = 0; _viewEnd = null; }
       drawPnlSvg();
     })
     .catch(() => { $('pnl-summary').textContent = 'ERROR LOADING TRADES'; });
@@ -945,71 +963,80 @@ function drawPnlSvg() {
   const svg = $('pnlSvg');
   if (!svg) return;
 
-  if (_pnlTrades.length === 0) {
+  const n = _pnlTrades.length;
+  if (n === 0) {
     $('pnl-summary').textContent = 'NO TRADES YET';
     svg.innerHTML = '';
     return;
   }
 
-  const W  = Math.round(svg.getBoundingClientRect().width) || 800;
-  const H  = Math.max(80, Math.round(svg.getBoundingClientRect().height)) || 200;
-  const ML = 55, MR = 15, MT = 15, MB = 30;
-  const cW = W - ML - MR;
-  const cH = H - MT - MB;
-
-  // Build cumulative PnL
+  // Build full cumulative PnL array
   let cum = 0, runMax = 0, maxDd = 0;
   _pnlVals = [];
   _pnlTrades.forEach(t => {
-    cum += (t.pnl_usdc ?? 0);
+    cum += (t.net_pnl ?? t.pnl_usdc ?? 0);
     _pnlVals.push(parseFloat(cum.toFixed(4)));
     if (cum > runMax) runMax = cum;
     const dd = runMax - cum;
     if (dd > maxDd) maxDd = dd;
   });
 
-  const n        = _pnlVals.length;
-  const finalPnl = _pnlVals[n - 1] ?? 0;
-  const ddStr    = maxDd > 0.001 ? '-$' + maxDd.toFixed(2) : '$0.00';
+  // Clamp and resolve view
+  const vStart = Math.max(0, Math.min(n - 1, _viewStart));
+  const vEnd   = _viewEnd === null ? n - 1 : Math.max(vStart, Math.min(n - 1, _viewEnd));
+  _viewStart = vStart;
+  if (_viewEnd !== null) _viewEnd = vEnd;
+  const vN = vEnd - vStart + 1;
 
-  $('pnl-summary').innerHTML =
-    'TRADES: <span style="color:var(--green)">' + _pnlTrades.length + '</span>' +
-    '&nbsp;|&nbsp;CUMULATIVE: <span class="' + (finalPnl >= 0 ? 'pos' : 'neg') + '">' +
-      (finalPnl >= 0 ? '+' : '') + '$' + Math.abs(finalPnl).toFixed(2) + '</span>' +
-    '&nbsp;|&nbsp;DRAWDOWN: <span style="color:' + (maxDd > 0.001 ? 'var(--red)' : 'var(--green-dim)') + '">' + ddStr + '</span>';
+  const W  = Math.round(svg.getBoundingClientRect().width) || 800;
+  const H  = Math.max(80, Math.round(svg.getBoundingClientRect().height)) || 200;
+  const ML = 58, MR = 15, MT = 15, MB = 30;
+  const cW = W - ML - MR;
+  const cH = H - MT - MB;
 
-  // Y range — snap to $0.40 multiples with one step of padding each side
+  // Y range from visible window only
+  const visVals = _pnlVals.slice(vStart, vEnd + 1);
   const STEP    = 0.40;
-  const yMinRaw = Math.min(0, ..._pnlVals);
-  const yMaxRaw = Math.max(0, ..._pnlVals);
+  const yMinRaw = Math.min(0, ...visVals);
+  const yMaxRaw = Math.max(0, ...visVals);
   const yMin    = Math.floor(yMinRaw / STEP - 1) * STEP;
   const yMax    = Math.ceil(yMaxRaw  / STEP + 1) * STEP;
   const yRange  = (yMax - yMin) || 1;
 
-  _pnlXS   = i => ML + (n <= 1 ? cW / 2 : (i / (n - 1)) * cW);
+  _pnlXS   = i => ML + (vN <= 1 ? cW / 2 : ((i - vStart) / (vN - 1)) * cW);
   _pnlYS   = v => MT + (1 - (v - yMin) / yRange) * cH;
-  _pnlMeta = { ML, MR, MT, MB, cW, cH, W, H };
+  _pnlMeta = { ML, MR, MT, MB, cW, cH, W, H, vStart, vEnd, vN };
+
+  const finalPnl = _pnlVals[n - 1] ?? 0;
+  const ddStr    = maxDd > 0.001 ? '-$' + maxDd.toFixed(2) : '$0.00';
+  $('pnl-summary').innerHTML =
+    'TRADES: <span style="color:var(--green)">' + n + '</span>' +
+    (vN < n ? '&nbsp;|&nbsp;WINDOW: <span style="color:var(--yellow)">' + vN + '</span>' : '') +
+    '&nbsp;|&nbsp;CUMULATIVE: <span class="' + (finalPnl >= 0 ? 'pos' : 'neg') + '">' +
+      (finalPnl >= 0 ? '+' : '') + '$' + Math.abs(finalPnl).toFixed(2) + '</span>' +
+    '&nbsp;|&nbsp;DRAWDOWN: <span style="color:' + (maxDd > 0.001 ? 'var(--red)' : 'var(--green-dim)') + '">' + ddStr + '</span>';
 
   const y0 = _pnlYS(0);
 
-  // SVG path data
-  const ptsArr = _pnlVals.map((v, i) => `${_pnlXS(i).toFixed(1)},${_pnlYS(v).toFixed(1)}`);
-  const pts    = ptsArr.join(' ');
-  const fillPth =
-    `M ${ptsArr[0]} ${ptsArr.slice(1).map(p => 'L ' + p).join(' ')}` +
-    ` L ${_pnlXS(n - 1).toFixed(1)},${y0.toFixed(1)}` +
-    ` L ${_pnlXS(0).toFixed(1)},${y0.toFixed(1)} Z`;
+  // Build path for visible window
+  const ptsArr = [];
+  for (let i = vStart; i <= vEnd; i++) {
+    ptsArr.push(`${_pnlXS(i).toFixed(1)},${_pnlYS(_pnlVals[i]).toFixed(1)}`);
+  }
+  const pts     = ptsArr.join(' ');
+  const fillPth = `M ${ptsArr[0]} ` + ptsArr.slice(1).map(p => 'L ' + p).join(' ') +
+    ` L ${_pnlXS(vEnd).toFixed(1)},${y0.toFixed(1)} L ${_pnlXS(vStart).toFixed(1)},${y0.toFixed(1)} Z`;
 
-  // Y tick values (skip zero — drawn separately in orange)
+  // Y ticks
   const yTicks = [];
   for (let v = Math.ceil(yMin / STEP) * STEP; v <= yMax + 1e-9; v += STEP) {
     const rv = parseFloat(v.toFixed(4));
     if (Math.abs(rv) > 1e-9) yTicks.push(rv);
   }
 
-  // X day-boundary ticks
+  // X day-boundary ticks within visible window
   const xDays = [];
-  for (let i = 1; i < _pnlTrades.length; i++) {
+  for (let i = vStart + 1; i <= vEnd; i++) {
     const d0 = new Date((_pnlTrades[i - 1].timestamp ?? 0) * 1000).toDateString();
     const d1 = new Date((_pnlTrades[i].timestamp     ?? 0) * 1000).toDateString();
     if (d0 !== d1) {
@@ -1021,104 +1048,68 @@ function drawPnlSvg() {
     }
   }
 
-  // SVG element helpers
   const NS  = 'http://www.w3.org/2000/svg';
-  const mk  = (tag, a) => {
-    const e = document.createElementNS(NS, tag);
-    Object.entries(a).forEach(([k, v]) => e.setAttribute(k, String(v)));
-    return e;
-  };
-  const mkT = (s, a) => { const e = mk('text', a); e.textContent = s; return e; };
+  const mk  = (tag, a) => { const e = document.createElementNS(NS, tag); Object.entries(a).forEach(([k, v]) => e.setAttribute(k, String(v))); return e; };
+  const mkT = (s, a)   => { const e = mk('text', a); e.textContent = s; return e; };
 
   svg.innerHTML = '';
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
-  // Background
   svg.appendChild(mk('rect', { x: 0, y: 0, width: W, height: H, fill: '#000' }));
 
-  // Clip paths: above-zero (green), below-zero (red)
   const defs = mk('defs', {});
-  const ca   = mk('clipPath', { id: 'pnl-ca' });
-  const cb   = mk('clipPath', { id: 'pnl-cb' });
+  const ca = mk('clipPath', { id: 'pnl-ca' });
+  const cb = mk('clipPath', { id: 'pnl-cb' });
   ca.appendChild(mk('rect', { x: ML, y: MT, width: cW, height: Math.max(0, y0 - MT) }));
   cb.appendChild(mk('rect', { x: ML, y: Math.max(MT, y0), width: cW, height: Math.max(0, MT + cH - y0) }));
-  defs.appendChild(ca);
-  defs.appendChild(cb);
+  defs.appendChild(ca); defs.appendChild(cb);
   svg.appendChild(defs);
 
-  // Chart area tint
   svg.appendChild(mk('rect', { x: ML, y: MT, width: cW, height: cH, fill: 'rgba(0,255,65,0.015)' }));
 
-  // Y gridlines + labels (non-zero ticks in green)
+  // Horizontal gridlines + Y labels
   yTicks.forEach(v => {
     const y = _pnlYS(v);
     if (y < MT - 2 || y > MT + cH + 2) return;
-    svg.appendChild(mk('line', {
-      x1: ML, y1: y.toFixed(1), x2: ML + cW, y2: y.toFixed(1),
-      stroke: 'rgba(0,255,65,0.08)', 'stroke-width': 1,
-    }));
+    svg.appendChild(mk('line', { x1: ML, y1: y.toFixed(1), x2: ML + cW, y2: y.toFixed(1), stroke: 'rgba(0,255,65,0.10)', 'stroke-width': 1 }));
     svg.appendChild(mkT((v > 0 ? '+' : '') + '$' + Math.abs(v).toFixed(2), {
-      x: ML - 6, y: (y + 4).toFixed(1),
-      fill: '#00ff41', 'font-size': 13, 'font-family': 'monospace', 'text-anchor': 'end',
+      x: ML - 5, y: (y + 4).toFixed(1), fill: '#00ff41', 'font-size': 11, 'font-family': 'monospace', 'text-anchor': 'end',
     }));
   });
 
-  // Zero line (orange dashed) + "$0.00" label
+  // Zero line
   if (y0 >= MT - 1 && y0 <= MT + cH + 1) {
-    svg.appendChild(mk('line', {
-      x1: ML, y1: y0.toFixed(1), x2: ML + cW, y2: y0.toFixed(1),
-      stroke: '#ff8c00', 'stroke-width': 1, 'stroke-dasharray': '5,4',
-    }));
-    // Black rect to cover any green tick label that sits at zero
-    svg.appendChild(mk('rect', {
-      x: 0, y: (y0 - 11).toFixed(1), width: ML - 2, height: 17, fill: '#000',
-    }));
-    svg.appendChild(mkT('$0.00', {
-      x: ML - 6, y: (y0 + 4).toFixed(1),
-      fill: '#ff8c00', 'font-size': 13, 'font-family': 'monospace',
-      'font-weight': 'bold', 'text-anchor': 'end',
-    }));
+    svg.appendChild(mk('line', { x1: ML, y1: y0.toFixed(1), x2: ML + cW, y2: y0.toFixed(1), stroke: '#ff8c00', 'stroke-width': 1, 'stroke-dasharray': '5,4' }));
+    svg.appendChild(mk('rect', { x: 0, y: (y0 - 9).toFixed(1), width: ML - 2, height: 14, fill: '#000' }));
+    svg.appendChild(mkT('$0.00', { x: ML - 5, y: (y0 + 4).toFixed(1), fill: '#ff8c00', 'font-size': 11, 'font-family': 'monospace', 'font-weight': 'bold', 'text-anchor': 'end' }));
   }
 
-  // Filled areas and line strokes, split at zero
-  if (n > 1) {
+  // Fill + stroke split at zero
+  if (vN > 1) {
     svg.appendChild(mk('path', { d: fillPth, fill: 'rgba(0,255,65,0.25)', 'clip-path': 'url(#pnl-ca)' }));
     svg.appendChild(mk('path', { d: fillPth, fill: 'rgba(255,0,0,0.25)',  'clip-path': 'url(#pnl-cb)' }));
     svg.appendChild(mk('polyline', { points: pts, fill: 'none', stroke: '#00ff41', 'stroke-width': 2, 'clip-path': 'url(#pnl-ca)' }));
     svg.appendChild(mk('polyline', { points: pts, fill: 'none', stroke: '#ff4444', 'stroke-width': 2, 'clip-path': 'url(#pnl-cb)' }));
   } else {
-    svg.appendChild(mk('circle', {
-      cx: _pnlXS(0).toFixed(1), cy: _pnlYS(_pnlVals[0]).toFixed(1), r: 4,
-      fill: finalPnl >= 0 ? '#00ff41' : '#ff4444',
-    }));
+    svg.appendChild(mk('circle', { cx: _pnlXS(vStart).toFixed(1), cy: _pnlYS(_pnlVals[vStart]).toFixed(1), r: 4, fill: _pnlVals[vStart] >= 0 ? '#00ff41' : '#ff4444' }));
   }
 
-  // X day labels at day boundaries
+  // X day labels — skip colliding ones (< 70 px gap)
+  let lastLabelX = ML - 70;
   xDays.forEach(({ x, label }) => {
-    svg.appendChild(mk('line', {
-      x1: x.toFixed(1), y1: (MT + cH).toFixed(1),
-      x2: x.toFixed(1), y2: (MT + cH + 5).toFixed(1),
-      stroke: '#00ff41', 'stroke-width': 1,
-    }));
-    svg.appendChild(mkT(label, {
-      x: x.toFixed(1), y: (MT + cH + 17).toFixed(1),
-      fill: '#00ff41', 'font-size': 11, 'font-family': 'monospace', 'text-anchor': 'middle',
-    }));
+    if (x - lastLabelX < 70) return;
+    lastLabelX = x;
+    svg.appendChild(mk('line', { x1: x.toFixed(1), y1: (MT + cH).toFixed(1), x2: x.toFixed(1), y2: (MT + cH + 5).toFixed(1), stroke: '#00ff41', 'stroke-width': 1 }));
+    svg.appendChild(mkT(label, { x: x.toFixed(1), y: (MT + cH + 17).toFixed(1), fill: '#00ff41', 'font-size': 11, 'font-family': 'monospace', 'text-anchor': 'middle' }));
   });
 
   // Axis borders
   svg.appendChild(mk('line', { x1: ML, y1: MT,      x2: ML,      y2: MT + cH, stroke: 'rgba(0,255,65,0.25)', 'stroke-width': 1 }));
   svg.appendChild(mk('line', { x1: ML, y1: MT + cH, x2: ML + cW, y2: MT + cH, stroke: 'rgba(0,255,65,0.25)', 'stroke-width': 1 }));
 
-  // Hover indicator elements (rendered last → on top)
-  svg.appendChild(mk('line', {
-    id: 'pnl-xhair', x1: 0, y1: MT, x2: 0, y2: MT + cH,
-    stroke: 'rgba(0,255,65,0.35)', 'stroke-width': 1, 'stroke-dasharray': '3,3', visibility: 'hidden',
-  }));
-  svg.appendChild(mk('circle', {
-    id: 'pnl-dot', cx: 0, cy: 0, r: 4,
-    fill: '#00ff41', stroke: '#000', 'stroke-width': 1.5, visibility: 'hidden',
-  }));
+  // Crosshair + dot (rendered last, on top)
+  svg.appendChild(mk('line', { id: 'pnl-xhair', x1: 0, y1: MT, x2: 0, y2: MT + cH, stroke: 'rgba(0,255,65,0.45)', 'stroke-width': 1, 'stroke-dasharray': '3,3', visibility: 'hidden' }));
+  svg.appendChild(mk('circle', { id: 'pnl-dot', cx: 0, cy: 0, r: 4, fill: '#00ff41', stroke: '#000', 'stroke-width': 1.5, visibility: 'hidden' }));
 }
 
 function initPnlSvgEvents() {
@@ -1126,53 +1117,100 @@ function initPnlSvgEvents() {
   const tip = $('pnl-tip');
   if (!svg || !tip) return;
 
-  const fmtD = ts => {
-    if (!ts) return '';
-    const d = new Date(ts * 1000);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
-      String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-  };
+  let _panActive = false, _panStartX = 0, _panStartVS = 0, _panStartVE = 0;
 
-  svg.addEventListener('mousemove', e => {
+  function hideCrosshair() {
+    const xh = $('pnl-xhair'); const dot = $('pnl-dot');
+    if (xh)  xh.setAttribute('visibility', 'hidden');
+    if (dot) dot.setAttribute('visibility', 'hidden');
+  }
+
+  svg.addEventListener('mousedown', e => {
+    if (!_pnlMeta) return;
+    _panActive  = true;
+    _panStartX  = e.clientX;
+    _panStartVS = _viewStart;
+    _panStartVE = _viewEnd ?? (_pnlTrades.length - 1);
+    svg.classList.add('panning');
+    tip.style.display = 'none';
+    hideCrosshair();
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (_panActive) {
+      if (!_pnlMeta) return;
+      const { cW, vN } = _pnlMeta;
+      const n = _pnlTrades.length;
+      const dxIdx = Math.round(((e.clientX - _panStartX) / cW) * (vN - 1));
+      const span  = _panStartVE - _panStartVS;
+      let ns = Math.max(0, Math.min(n - 1 - span, _panStartVS - dxIdx));
+      _viewStart = ns;
+      _viewEnd   = ns + span;
+      drawPnlSvg();
+      return;
+    }
+
+    // Hover crosshair
     if (!_pnlXS || !_pnlMeta || _pnlTrades.length === 0) return;
-    const { ML, cW, MT, cH, W } = _pnlMeta;
-    const rect  = svg.getBoundingClientRect();
-    const svgX  = (e.clientX - rect.left) * (W / rect.width);
-    const n     = _pnlVals.length;
-    if (svgX < ML || svgX > ML + cW) { tip.style.display = 'none'; return; }
+    const { ML, cW, MT, cH, W, vStart, vEnd, vN } = _pnlMeta;
+    const rect = svg.getBoundingClientRect();
+    const svgX = (e.clientX - rect.left) * (W / rect.width);
+    if (svgX < ML || svgX > ML + cW) { tip.style.display = 'none'; hideCrosshair(); return; }
 
-    const idx   = Math.max(0, Math.min(n - 1, Math.round(((svgX - ML) / cW) * (n - 1))));
-    const t     = _pnlTrades[idx];
-    const v     = t.pnl_usdc ?? 0;
-    const dir   = (t.direction ?? '').toUpperCase();
-    const color = v >= 0 ? '#00ff41' : '#ff4444';
+    const visIdx = Math.max(0, Math.min(vN - 1, Math.round(((svgX - ML) / cW) * (vN - 1))));
+    const idx    = vStart + visIdx;
+    const t      = _pnlTrades[idx];
+    const cumV   = _pnlVals[idx] ?? 0;
+    const tPnl   = t.net_pnl ?? t.pnl_usdc ?? 0;
+    const dir    = (t.direction ?? '').toUpperCase() || '—';
+    const pClr   = tPnl >= 0 ? '#00ff41' : '#ff4444';
+    const cClr   = cumV >= 0 ? '#00ff41' : '#ff4444';
+    const dt     = new Date((t.timestamp ?? 0) * 1000);
+    const dtStr  = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) + ' ' +
+      String(dt.getUTCHours()).padStart(2, '0') + ':' + String(dt.getUTCMinutes()).padStart(2, '0') + ' UTC';
 
     tip.innerHTML =
-      '<span style="color:#aaffaa">Trade #' + (idx + 1) + '</span>' +
-      '  <span style="color:#556">' + fmtD(t.timestamp) + '</span><br>' +
-      '<span style="color:#fff">' + dir + '</span>' +
-      '  <span style="color:' + color + '">' + (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2) + '</span>';
+      '<span style="color:#aaffaa">Trade #' + (idx + 1) + ' / ' + _pnlTrades.length + '</span>' +
+      '&nbsp;&nbsp;<span style="color:#667">' + dtStr + '</span><br>' +
+      '<span style="color:#ccc">' + dir + '</span>' +
+      '&nbsp;&nbsp;trade:&nbsp;<span style="color:' + pClr + '">' + (tPnl >= 0 ? '+' : '') + '$' + Math.abs(tPnl).toFixed(2) + '</span>' +
+      '&nbsp;&nbsp;cum:&nbsp;<span style="color:' + cClr + '">' + (cumV >= 0 ? '+' : '') + '$' + Math.abs(cumV).toFixed(2) + '</span>';
 
-    const tipX = Math.min(e.clientX - rect.left + 14, rect.width - 165);
-    const tipY = Math.max(e.clientY - rect.top  - 50, 4);
-    tip.style.left    = tipX + 'px';
-    tip.style.top     = tipY + 'px';
+    tip.style.left    = Math.min(e.clientX - rect.left + 14, rect.width - 200) + 'px';
+    tip.style.top     = Math.max(e.clientY - rect.top  - 55, 4) + 'px';
     tip.style.display = 'block';
 
-    const xhair = $('pnl-xhair');
-    const dot   = $('pnl-dot');
-    const cx    = _pnlXS(idx).toFixed(1);
-    if (xhair) { xhair.setAttribute('x1', cx); xhair.setAttribute('x2', cx); xhair.setAttribute('visibility', 'visible'); }
-    if (dot)   { dot.setAttribute('cx', cx); dot.setAttribute('cy', _pnlYS(_pnlVals[idx]).toFixed(1)); dot.setAttribute('fill', color); dot.setAttribute('visibility', 'visible'); }
+    const cx = _pnlXS(idx).toFixed(1);
+    const xh = $('pnl-xhair'); const dot = $('pnl-dot');
+    if (xh)  { xh.setAttribute('x1', cx); xh.setAttribute('x2', cx); xh.setAttribute('visibility', 'visible'); }
+    if (dot) { dot.setAttribute('cx', cx); dot.setAttribute('cy', _pnlYS(cumV).toFixed(1)); dot.setAttribute('fill', pClr); dot.setAttribute('visibility', 'visible'); }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (_panActive) { _panActive = false; svg.classList.remove('panning'); }
   });
 
   svg.addEventListener('mouseleave', () => {
-    tip.style.display = 'none';
-    const xhair = $('pnl-xhair');
-    const dot   = $('pnl-dot');
-    if (xhair) xhair.setAttribute('visibility', 'hidden');
-    if (dot)   dot.setAttribute('visibility', 'hidden');
+    if (!_panActive) { tip.style.display = 'none'; hideCrosshair(); }
   });
+
+  svg.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (!_pnlMeta) return;
+    const { ML, cW, vStart, vN, W } = _pnlMeta;
+    const n = _pnlTrades.length;
+    if (n < 2) return;
+    const rect   = svg.getBoundingClientRect();
+    const svgX   = (e.clientX - rect.left) * (W / rect.width);
+    const fracX  = Math.max(0, Math.min(1, (svgX - ML) / cW));
+    const factor = e.deltaY > 0 ? 1.3 : 0.75;
+    const newSpan = Math.max(10, Math.min(n, Math.round(vN * factor)));
+    let ns = Math.max(0, Math.min(n - newSpan, Math.round(vStart + fracX * (vN - 1) - fracX * (newSpan - 1))));
+    _viewStart = ns;
+    _viewEnd   = ns + newSpan - 1 >= n - 1 ? null : ns + newSpan - 1;
+    drawPnlSvg();
+  }, { passive: false });
 }
 
 // ── 24h PnL badge ─────────────────────────────────────────────

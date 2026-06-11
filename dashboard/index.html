@@ -1179,7 +1179,8 @@ function initPnlSvgEvents() {
       return;
     }
 
-    // Hover crosshair
+    // Hover crosshair — only when mouse is over the chart SVG
+    if (!svg.contains(e.target)) return;
     if (!_pnlXS || !_pnlMeta || _pnlTrades.length === 0) return;
     const { ML, cW, MT, cH, W, vStart, vEnd, vN } = _pnlMeta;
     const rect = svg.getBoundingClientRect();

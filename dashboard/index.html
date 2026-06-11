@@ -441,10 +441,12 @@ html, body {
 
   <!-- LLM Reasoning panel -->
   <div class="panel" id="llm-row" style="padding:5px 12px;display:flex;flex-direction:column;overflow:hidden;">
-    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-bottom:4px;">
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-bottom:2px;">
       <span class="plabel" style="margin:0;flex-shrink:0;">LLM REASONING</span>
       <span id="llm-badge" class="chip" style="font-size:8px;padding:0 5px;display:none;flex-shrink:0;"></span>
+      <span id="llm-action-badge" class="chip" style="font-size:9px;padding:1px 6px;display:none;flex-shrink:0;font-weight:bold;letter-spacing:1.5px;"></span>
     </div>
+    <div id="llm-flavor" style="font-size:9px;font-style:italic;color:rgba(0,255,65,0.38);letter-spacing:.4px;margin-bottom:4px;flex-shrink:0;display:none;"></div>
     <div id="llm-text" style="font-size:13px;color:var(--green-dim);letter-spacing:.2px;line-height:1.55;overflow-y:auto;flex:1;white-space:pre-wrap;word-break:break-word;min-height:0;">—</div>
   </div>
   <div class="splitter" data-target="llm-row" data-min="24"></div>
@@ -566,11 +568,43 @@ function setBar(id, frac) {
 // MACD histogram → 0..1 via tanh
 function macdNorm(h) { return 0.5 + Math.tanh((h ?? 0) * 8) * 0.5; }
 
-// ── LLM markdown renderer ─────────────────────────────────────
+// ── LLM helpers ───────────────────────────────────────────────
+const LLM_FLAVORS = {
+  BUY:  'Follow the white rabbit.',
+  SELL: 'Dodge this.',
+  HOLD: 'There is no spoon.',
+  VETO: 'The Oracle told you exactly what you needed to hear.',
+};
+
+function extractLlmAction(text) {
+  if (!text) return null;
+  // Primary format: **ACTION: HOLD** or ACTION: HOLD
+  const m = text.match(/\*{0,2}ACTION:\s*(BUY|SELL|HOLD)\*{0,2}/i);
+  if (m) return m[1].toUpperCase();
+  // Fallback: bare word on first non-empty line
+  const firstLine = text.split('\n').find(l => l.trim())?.replace(/[\*#:\-\s]/g, '').trim().toUpperCase();
+  if (firstLine && ['BUY', 'SELL', 'HOLD'].includes(firstLine)) return firstLine;
+  return null;
+}
+
+function stripLlmPreamble(text, action) {
+  let t = text;
+  // Remove the ACTION declaration line
+  if (action) t = t.replace(new RegExp(`[^\\n]*\\*{0,2}ACTION:\\s*${action}\\*{0,2}[^\\n]*\\n?`, 'i'), '');
+  // Remove opening title header (# ORACLE AGENT … / # DECISION OUTPUT etc.)
+  t = t.replace(/^#[^\n]*\n/, '');
+  // Remove --- separator lines
+  t = t.replace(/^---+\s*$/gm, '');
+  // Collapse leading blank lines
+  t = t.replace(/^\n+/, '');
+  return t;
+}
+
 function renderLlmMarkdown(text) {
   if (!text) return '—';
   const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return esc
+    .replace(/\n{3,}/g, '\n\n')
     .replace(/^### (.+)$/gm, '<span style="color:var(--green);font-weight:bold;letter-spacing:.5px;">$1</span>')
     .replace(/^## (.+)$/gm, '<span style="color:var(--green);font-weight:bold;font-size:14px;letter-spacing:.8px;">$1</span>')
     .replace(/^# (.+)$/gm, '<span style="color:var(--green);font-weight:bold;font-size:15px;letter-spacing:1px;">$1</span>')
@@ -836,28 +870,52 @@ function render(d) {
   }
 
   // LLM Reasoning
-  const llmBadge = $('llm-badge');
-  const llmText  = $('llm-text');
+  const llmBadge       = $('llm-badge');
+  const llmActionBadge = $('llm-action-badge');
+  const llmFlavor      = $('llm-flavor');
+  const llmText        = $('llm-text');
   if (d.llm_reasoning) {
-    llmText.innerHTML = renderLlmMarkdown(d.llm_reasoning);
+    // Source badge
     llmBadge.style.display = 'inline';
     const src = (d.llm_source || (d.llm_used ? 'claude' : 'fallback')).toLowerCase();
     if (src === 'claude') {
-      llmBadge.textContent       = 'CLAUDE';
-      llmBadge.style.color       = 'var(--green)';
-      llmBadge.style.borderColor = 'var(--green)';
+      llmBadge.textContent = 'CLAUDE'; llmBadge.style.color = 'var(--green)'; llmBadge.style.borderColor = 'var(--green)';
     } else if (src === 'groq') {
-      llmBadge.textContent       = 'GROQ';
-      llmBadge.style.color       = '#a78bfa';
-      llmBadge.style.borderColor = '#a78bfa';
+      llmBadge.textContent = 'GROQ';   llmBadge.style.color = '#a78bfa';      llmBadge.style.borderColor = '#a78bfa';
     } else {
-      llmBadge.textContent       = 'FALLBACK';
-      llmBadge.style.color       = 'var(--yellow)';
-      llmBadge.style.borderColor = 'var(--yellow)';
+      llmBadge.textContent = 'FALLBACK'; llmBadge.style.color = 'var(--yellow)'; llmBadge.style.borderColor = 'var(--yellow)';
     }
+
+    // Action badge — extract and strip from body
+    const llmAction = extractLlmAction(d.llm_reasoning);
+    if (llmAction) {
+      const ac = llmAction === 'BUY' ? 'var(--green)' : llmAction === 'SELL' ? 'var(--red)' : 'var(--yellow)';
+      llmActionBadge.textContent       = llmAction;
+      llmActionBadge.style.color       = ac;
+      llmActionBadge.style.borderColor = ac;
+      llmActionBadge.style.display     = 'inline';
+    } else {
+      llmActionBadge.style.display = 'none';
+    }
+
+    // Flavor quote
+    const isVeto = d.llm_reasoning.includes('RULE_VETO') || d.llm_reasoning.includes('CONSENSUS_BLOCK');
+    const flavor = isVeto ? LLM_FLAVORS.VETO : (llmAction ? LLM_FLAVORS[llmAction] : null);
+    if (flavor) {
+      llmFlavor.textContent  = flavor;
+      llmFlavor.style.display = 'block';
+    } else {
+      llmFlavor.style.display = 'none';
+    }
+
+    // Body text — strip preamble, render markdown
+    const body = stripLlmPreamble(d.llm_reasoning, llmAction);
+    llmText.innerHTML = renderLlmMarkdown(body);
   } else {
-    llmText.innerHTML      = '—';
-    llmBadge.style.display = 'none';
+    llmText.innerHTML           = '—';
+    llmBadge.style.display      = 'none';
+    llmActionBadge.style.display = 'none';
+    llmFlavor.style.display     = 'none';
   }
 
   // Status bar

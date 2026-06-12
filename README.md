@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/d56fae52-928c-401f-b4fc-6b3f3fc3fa76
 
 ## Live Dashboard — Matrix Trader
 
-![Matrix Trader dashboard](dashboard_matrix_1.png)
+![Matrix Trader dashboard](Capture d’écran 2026-06-12)
 
 ![LLM reasoning panel](dashboard_matrix_2.png)
 

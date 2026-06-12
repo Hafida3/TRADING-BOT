@@ -4,7 +4,9 @@ An autonomous AI trading agent running 24/7 on a Linux VPS, where a **Claude-pow
 
 > **Philosophy: signals propose, the LLM can refuse, the code decides.**
 
-<!-- 🎬 DEMO VIDEO — drag & drop your dash_demo.mp4 here in the GitHub web editor -->
+
+
+https://github.com/user-attachments/assets/d56fae52-928c-401f-b4fc-6b3f3fc3fa76
 
 ---
 

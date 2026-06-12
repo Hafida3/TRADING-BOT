@@ -10,15 +10,16 @@ An autonomous AI trading agent running 24/7 on a Linux VPS, where a **Claude-pow
 
 ## Live Dashboard — Matrix Trader
 
-<!-- 📸 Replace with current dashboard screenshot: dashboard_matrix.png -->
-![Matrix Trader dashboard](dashboard_screenshot.png)
+![Matrix Trader dashboard](dashboard_matrix_1.png)
+
+![LLM reasoning panel](dashboard_matrix_2.png)
 
 Real-time monitoring served by the bot itself (vanilla HTML/JS, no build step):
 
 - **Live PnL curve** — pan, wheel-zoom, crosshair tooltip, per-trade markers
 - **LLM Reasoning panel** — the agent's full chain of thought for every tick, rendered as markdown, with the model source badge (CLAUDE / GROQ / FALLBACK)
 - **Gate-status indicators** — when the LLM says BUY but a gate blocks it, the dashboard says so: `THE DOOR IS LOCKED, NEO` (consensus gate) or `DENIED BY THE ARCHITECT` (hard rule veto)
-- **Agent state avatar** — an animated overlay reflecting live health, regime, and open positions
+- **R_Pulse** — an animated avatar overlay drifting across the dashboard, reflecting live health, regime and open positions, with a particle trail and state-colored aura
 - **Grid bot panel, signal bars, regime badge, BTC macro data**
 
 Accessible locally at `http://localhost:8080`, or through an SSH tunnel when deployed:

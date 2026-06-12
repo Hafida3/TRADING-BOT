@@ -121,7 +121,16 @@ def _call_claude(
     agent_memory:     str = "",
     agent_soul:       str = "",
 ) -> tuple[str, str] | None:
-    """Call claude-haiku-4-5. Returns (action, reasoning) or None."""
+    """Call claude-haiku-4-5 with prompt caching on the static prefix.
+
+    Static system blocks (cached at 1-hour TTL):
+      1. Role identity
+      2. Soul / governing rules
+      3. Output format instructions  ← cache_control breakpoint
+
+    Dynamic user message (never cached):
+      Current market signals, composite score, zone, memory lessons.
+    """
     if not config.ANTHROPIC_API_KEY:
         return None
 
@@ -130,12 +139,41 @@ def _call_claude(
 
     zone     = _zone(composite_score)
     ma_trend = "bull" if ma_fast and ma_slow and ma_fast > ma_slow else "bear"
+
+    # ── Static system blocks (same every tick → cached) ──────────────────────
+    soul_text = agent_soul if agent_soul else "Protect capital, generate asymmetric gains."
+    system_blocks = [
+        {
+            "type": "text",
+            "text": "You are an autonomous crypto trading agent.",
+        },
+        {
+            "type": "text",
+            "text": f"Your governing rules and identity:\n{soul_text}",
+        },
+        # Last static block: cache breakpoint. Loop interval ~300s + processing
+        # slightly exceeds the default 5-min TTL, so 1h TTL is required for hits.
+        {
+            "type": "text",
+            "text": (
+                "Respond in this exact order:\n"
+                "Line 1: ACTION — one word only: BUY, SELL, or HOLD\n"
+                "Line 2: TUNE: KEY=value (reason) — only if an adjustment is needed after "
+                "3+ consecutive losses or a regime shift. Omit entirely if not needed.\n"
+                "  Allowed keys: BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), "
+                "STOP_LOSS_PCT(0.002-0.012), TAKE_PROFIT_PCT(0.004-0.024).\n"
+                "Remaining lines: your detailed reasoning."
+            ),
+            "cache_control": {"type": "ephemeral", "ttl": "1h"},
+        },
+    ]
+
+    # ── Dynamic user message (changes every tick → never cached) ─────────────
     memory_ctx = (
         f"\n\nYour past trade lessons:\n{agent_memory[-800:]}"
         if agent_memory else ""
     )
-    prompt = (
-        f"You are an autonomous crypto trading agent. "
+    user_content = (
         f"Given these market signals: "
         f"RSI={fmt(rsi_raw,1)}, MACD={fmt(macd_hist_raw,4)}, "
         f"MA50/200={fmt(ma_fast,2)}/{fmt(ma_slow,2)} ({ma_trend}), "
@@ -144,21 +182,13 @@ def _call_claude(
         f"News={fmt(news_score)} ({top_headline or 'no headline'}), "
         f"Macro={fmt(macro_score)}, Fear&Greed={fear_greed_raw}/100 ({fear_greed_label}), "
         f"Regime={regime}. "
-        + (f"\n\nYour governing rules and identity:\n{agent_soul}\n" if agent_soul else "Your soul: protect capital, generate asymmetric gains.")
-        + f"{memory_ctx}\n\n"
+        f"{memory_ctx}\n\n"
         f"Composite score: {composite_score:.3f} "
         f"(BUY threshold: {config.BUY_THRESHOLD}, SELL threshold: {config.SELL_THRESHOLD})\n"
         f"Current signal zone: {zone}\n"
         f"Note: if you return HOLD while score is in SELL ZONE, no short position will open.\n"
         f"Be decisive — HOLD is only appropriate in the NEUTRAL ZONE "
-        f"({config.SELL_THRESHOLD}–{config.BUY_THRESHOLD}).\n\n"
-        f"Respond in this exact order:\n"
-        f"Line 1: ACTION — one word only: BUY, SELL, or HOLD\n"
-        f"Line 2: TUNE: KEY=value (reason) — only if an adjustment is needed after "
-        f"3+ consecutive losses or a regime shift. Omit entirely if not needed.\n"
-        f"  Allowed keys: BUY_THRESHOLD(0.42-0.65), SELL_THRESHOLD(0.35-0.55), "
-        f"STOP_LOSS_PCT(0.002-0.012), TAKE_PROFIT_PCT(0.004-0.024).\n"
-        f"Remaining lines: your detailed reasoning."
+        f"({config.SELL_THRESHOLD}–{config.BUY_THRESHOLD})."
     )
 
     try:
@@ -167,7 +197,15 @@ def _call_claude(
         msg = client.messages.create(
             model="claude-haiku-4-5",
             max_tokens=600,
-            messages=[{"role": "user", "content": prompt}],
+            system=system_blocks,
+            messages=[{"role": "user", "content": user_content}],
+        )
+        u = msg.usage
+        cache_created = getattr(u, "cache_creation_input_tokens", 0) or 0
+        cache_read    = getattr(u, "cache_read_input_tokens",    0) or 0
+        print(
+            f"[Claude cache] created={cache_created} read={cache_read} "
+            f"input={u.input_tokens} output={u.output_tokens}"
         )
         content = msg.content[0].text.strip()
         m = re.search(r'\b(BUY|SELL|HOLD)\b', content.upper())

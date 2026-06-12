@@ -116,6 +116,8 @@ The agent runs unattended on a Hetzner VPS (Ubuntu, systemd):
 - **systemd service** with `Restart=always` — survives crashes and reboots; state restored from SQLite in seconds
 - **Daily backups** (cron, 14-day rotation)
 - **Bi-daily Telegram reports** (09:00 & 21:00 Paris): total PnL, 24h window, 12h session stats with win rate, best/worst, last 5 trades
+
+![Bi-daily Telegram reports](telegram_reports.png)
 - **Deploy workflow:** edit locally → commit + push → `git pull && systemctl restart` on the VPS
 - Dashboard reached through an SSH tunnel (never exposed publicly)
 

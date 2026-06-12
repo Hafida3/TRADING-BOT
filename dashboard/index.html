@@ -295,12 +295,21 @@ html, body {
 
 .trade-row {
   display: grid;
-  grid-template-columns: 90px 38px 46px 128px 72px 55px 1fr;
+  grid-template-columns: 90px 38px 46px 128px auto 55px 1fr;
   align-items: center;
   gap: 8px;
   font-size: 10px;
   padding: 3px 0;
   border-bottom: 1px solid rgba(0,255,65,0.06);
+}
+.trades-hdr {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: #4a7a5a;
+  border-bottom: 1px solid rgba(74,122,90,0.35) !important;
+  padding: 4px 0 5px;
+  margin-bottom: 1px;
 }
 
 .td-badge {
@@ -559,6 +568,15 @@ html, body {
     <div class="panel" id="trades-panel">
       <div class="plabel">RECENT TRADES</div>
       <div id="no-trades" class="empty-msg">NO TRADES YET</div>
+      <div id="trades-header" class="trade-row trades-hdr" style="display:none;">
+        <span>Time</span>
+        <span>Result</span>
+        <span>Side</span>
+        <span>Entry → Exit</span>
+        <span>PNL ($)</span>
+        <span>Move (%)</span>
+        <span></span>
+      </div>
       <div id="trades-scroll">
         <div id="trades-list"></div>
       </div>
@@ -1058,11 +1076,13 @@ function render(d) {
   // Trades
   const trades = Array.isArray(d.trades) ? d.trades : [];
   if (trades.length === 0) {
-    $('no-trades').style.display = 'block';
-    $('trades-list').innerHTML   = '';
+    $('no-trades').style.display     = 'block';
+    $('trades-header').style.display = 'none';
+    $('trades-list').innerHTML       = '';
   } else {
-    $('no-trades').style.display = 'none';
-    $('trades-list').innerHTML   = [...trades].reverse().slice(0, 20).map(t => {
+    $('no-trades').style.display     = 'none';
+    $('trades-header').style.display = 'grid';
+    $('trades-list').innerHTML       = [...trades].reverse().slice(0, 20).map(t => {
       const win   = (t.pnl_usdc ?? 0) >= 0;
       const cls   = win ? 'win' : 'loss';
       const pct   = ((t.pnl_pct ?? 0) * 100).toFixed(2);
@@ -1073,17 +1093,23 @@ function render(d) {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) +
           ' ' + String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
       })() : '—';
-      const isShort = t.direction === 'short';
+      const isShort  = t.direction === 'short';
       const dirStyle = isShort
         ? 'color:var(--red);border-color:var(--red);-webkit-font-smoothing:antialiased;font-weight:bold;'
         : 'color:var(--green);border-color:var(--green);';
       const dirLabel = isShort ? 'SHORT' : 'LONG';
+      const gross    = t.pnl_usdc ?? 0;
+      const net      = t.net_pnl  != null ? t.net_pnl : gross;
+      const grossStr = (gross >= 0 ? '+' : '') + '$' + f2(gross);
+      const netStr   = (net   >= 0 ? '+' : '') + '$' + f2(net) + ' net';
+      const mismatch = (gross >= 0) !== (net >= 0);
+      const netColor = mismatch ? 'var(--red)' : 'rgba(0,255,65,0.45)';
       return `<div class="trade-row">
         <span style="color:#00ff41;font-size:11px;font-family:monospace;white-space:nowrap;">${utcTs}</span>
         <span class="td-badge ${cls}">${win ? 'WIN' : 'LOSS'}</span>
         <span class="td-badge" style="${dirStyle}">${dirLabel}</span>
         <span class="dim">$${f2(t.entry_price)} → $${f2(t.exit_price)}</span>
-        <span class="${cls}">${win ? '+' : ''}$${f2(t.pnl_usdc)}</span>
+        <span class="${cls}" style="line-height:1.3;">${grossStr}<br><span style="font-size:8.5px;color:${netColor};font-weight:normal;">(${netStr})</span></span>
         <span class="${cls}">${pctS}%</span>
         <span></span>
       </div>`;

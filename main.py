@@ -240,6 +240,7 @@ def build_state(
     ma_slow: float | None = None,
     stoch_k: float | None = None,
     stoch_d: float | None = None,
+    last_gate_event: dict | None = None,
 ) -> dict:
     upnl = 0.0
     if risk.position and price:
@@ -305,6 +306,7 @@ def build_state(
         "price_history":        price_history[-100:],
         "dry_run":              config.DRY_RUN,
         "iteration":            iteration,
+        "last_gate_event":      last_gate_event,
     }
 
 
@@ -620,6 +622,9 @@ def run():
             long_exit  = risk.check_sl_tp(price, regime=regime_info["regime"])
             short_exit = risk.check_short_sl_tp(price, regime=regime_info["regime"])
 
+            # Reflects the CURRENT tick only — reset every tick, set on a gate block.
+            last_gate_event = None
+
             if long_exit and risk.position:
                 trade = risk.close_position(price)
                 trade["regime"] = regime_info["regime"]
@@ -673,6 +678,12 @@ def run():
                             f"[CONSENSUS_BLOCK] LLM=BUY composite={sig.score:.3f} "
                             f"< BUY_THRESHOLD={config.BUY_THRESHOLD} — no LONG opened"
                         )
+                        last_gate_event = {
+                            "type":       "CONSENSUS_BLOCK",
+                            "detail":     f"score {sig.score:.3f} < threshold {config.BUY_THRESHOLD}",
+                            "llm_action": "BUY",
+                            "tick_iter":  iteration,
+                        }
                     else:
                         check = risk.check_trade(
                             "BUY", price, config.TRADE_AMOUNT_USDC,
@@ -704,6 +715,12 @@ def run():
                                 f"macro={sig.macro_score:.3f} composite={sig.score:.3f} "
                                 f"LLM={sig.action}"
                             )
+                            last_gate_event = {
+                                "type":       "RULE_VETO",
+                                "detail":     f"regime={regime_info.get('regime')} macro={sig.macro_score:.3f}",
+                                "llm_action": "BUY",
+                                "tick_iter":  iteration,
+                            }
                         else:
                             log(f"  BUY blocked: {check.reason}")
 
@@ -739,6 +756,12 @@ def run():
                             f"[CONSENSUS_BLOCK] LLM=SELL composite={sig.score:.3f} "
                             f"> SELL_THRESHOLD={config.SELL_THRESHOLD} — no SHORT opened"
                         )
+                        last_gate_event = {
+                            "type":       "CONSENSUS_BLOCK",
+                            "detail":     f"score {sig.score:.3f} > threshold {config.SELL_THRESHOLD}",
+                            "llm_action": "SELL",
+                            "tick_iter":  iteration,
+                        }
                     else:
                         check = risk.check_trade("SHORT", price, config.TRADE_AMOUNT_USDC,
                                                  current_tick=iteration)
@@ -782,6 +805,7 @@ def run():
                 ma_slow=ma_slow_val,
                 stoch_k=stoch_k_val,
                 stoch_d=stoch_d_val,
+                last_gate_event=last_gate_event,
             ))
 
             # ── 11. Hourly PnL report ─────────────────────────────────────

@@ -845,20 +845,19 @@ function render(d) {
   badge.textContent = sig;
   badge.className   = 'sig-badge ' + sig;
 
-  // Gate-block tag — shown when LLM wanted BUY/SELL but a gate overrode to HOLD
+  // Gate-block tag — driven by the authoritative last_gate_event (current tick only)
   const gateEl      = $('gate-block');
-  const rawLlmAct   = extractLlmAction(d.llm_reasoning); // no d.signal fallback
-  const gateBlocked = sig === 'HOLD' && rawLlmAct && rawLlmAct !== 'HOLD' && d.llm_reasoning;
+  const gateEvent   = d.last_gate_event || null;
+  const gateBlocked = gateEvent !== null;
   if (gateEl) {
     if (gateBlocked) {
       let headline, detail;
-      if (d.llm_reasoning.includes('RULE_VETO')) {
+      if (gateEvent.type === 'RULE_VETO') {
         headline = 'DENIED BY THE ARCHITECT';
-        detail   = 'no LONG in ranging + macro < 0.50';
+        detail   = gateEvent.detail || '';
       } else {
         headline = 'THE DOOR IS LOCKED, NEO';
-        const sc = (d.signal_score ?? 0).toFixed(3);
-        detail   = rawLlmAct === 'BUY' ? 'score ' + sc + ' < 0.62' : 'score ' + sc + ' > 0.38';
+        detail   = gateEvent.detail || '';
       }
       gateEl.innerHTML =
         '<div style="color:var(--yellow);font-size:10px;letter-spacing:1.5px;font-weight:bold;' +
